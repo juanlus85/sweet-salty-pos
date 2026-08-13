@@ -466,12 +466,13 @@ export async function listAdminProducts() {
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id))
+    .where(eq(products.isActive, true))
     .orderBy(asc(products.name));
 }
 
 export async function listAdminCategories() {
   const database = requireDb();
-  return database.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name));
+  return database.select().from(categories).where(eq(categories.isActive, true)).orderBy(asc(categories.sortOrder), asc(categories.name));
 }
 
 export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean }) {
