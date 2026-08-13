@@ -142,3 +142,15 @@ button:disabled { cursor: not-allowed; }
   .ticket-lines { min-height: 0; overflow-y: auto; }
   .ticket-footer { flex: none; position: sticky; bottom: 0; z-index: 2; background: #fff; }
 }
+
+/* Inicio grande y táctil en la cabecera del TPV */
+.pos-home-button { min-width: 94px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; border: 2px solid rgba(255,255,255,.78); border-radius: 10px; color: #34713c; background: #fff; font-size: 14px; font-weight: 800; letter-spacing: .2px; box-shadow: 0 2px 0 rgba(0,0,0,.08); }
+.pos-home-button:hover { background: #f0faef; transform: translateY(-1px); }
+.pos-home-button:active { transform: translateY(0); }
+@media (min-width: 761px) and (orientation: landscape) {
+  .pos-home-button { min-width: 112px; min-height: 50px; padding: 0 18px; border-radius: 11px; font-size: 16px; }
+  .pos-home-button svg { width: 19px; height: 19px; }
+}
+@media (max-width: 760px) {
+  .pos-home-button { min-width: 96px; min-height: 46px; font-size: 14px; }
+}
