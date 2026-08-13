@@ -233,6 +233,7 @@ apiRouter.patch("/admin/products/:id", async (req, res, next) => {
       salePrice: z.number().nonnegative().optional(),
       minimumStock: z.number().min(0).optional(),
       isFeatured: z.boolean().optional(),
+      showInTpv: z.boolean().optional(),
       isActive: z.boolean().optional(),
       imageUrl: mediaPathSchema.nullable().optional(),
       sku: z.string().trim().max(100).nullable().optional(),
