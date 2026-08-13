@@ -12,6 +12,7 @@ import {
   sales,
   stockMovements,
   suppliers,
+  vatTypes,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
 
@@ -49,6 +50,7 @@ export async function listCatalog(categoryId?: number, order: "alphabetical" | "
       id: products.id,
       categoryId: products.categoryId,
       categoryName: categories.name,
+      vatTypeId: products.vatTypeId,
       name: products.name,
       sku: products.sku,
       barcode: products.barcode,
@@ -78,6 +80,7 @@ export async function getFeaturedProducts() {
       id: products.id,
       categoryId: products.categoryId,
       categoryName: categories.name,
+      vatTypeId: products.vatTypeId,
       name: products.name,
       sku: products.sku,
       imageUrl: products.imageUrl,
@@ -98,6 +101,7 @@ export async function createProduct(input: {
   name: string;
   salePrice: number;
   vatRate?: number;
+  vatTypeId?: number;
   initialStock?: number;
   minimumStock?: number;
   sku?: string;
@@ -108,11 +112,18 @@ export async function createProduct(input: {
   const database = requireDb();
   const initialStock = input.initialStock ?? 0;
   const result = await database.transaction(async (tx) => {
+    let resolvedVatRate = input.vatRate ?? 7;
+    if (input.vatTypeId) {
+      const selectedVat = await tx.select({ rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.id, input.vatTypeId), eq(vatTypes.isActive, true))).limit(1);
+      if (!selectedVat[0]) throw new Error("El tipo de IVA seleccionado no existe o está inactivo.");
+      resolvedVatRate = toNumber(selectedVat[0].rate);
+    }
     const inserted = await tx.insert(products).values({
       categoryId: input.categoryId,
+      vatTypeId: input.vatTypeId ?? null,
       name: input.name.trim(),
       salePrice: money(input.salePrice),
-      vatRate: money(input.vatRate ?? 7),
+      vatRate: money(resolvedVatRate),
       minimumStock: quantity(input.minimumStock ?? 0),
       sku: input.sku?.trim() || null,
       barcode: input.barcode?.trim() || null,
@@ -390,6 +401,28 @@ export async function getRecentSales(limit = 20) {
 }
 
 
+export async function listVatTypes() {
+  const database = requireDb();
+  return database.select().from(vatTypes).where(eq(vatTypes.isActive, true)).orderBy(asc(vatTypes.sortOrder), asc(vatTypes.rate));
+}
+
+export async function createVatType(input: { name: string; rate: number; sortOrder?: number }) {
+  const database = requireDb();
+  const inserted = await database.insert(vatTypes).values({ name: input.name.trim(), rate: money(input.rate), sortOrder: input.sortOrder ?? 0 });
+  return { id: Number(inserted[0].insertId) };
+}
+
+export async function updateVatType(input: { id: number; name?: string; rate?: number; sortOrder?: number; isActive?: boolean }) {
+  const database = requireDb();
+  const values: Record<string, unknown> = {};
+  if (input.name !== undefined) values.name = input.name.trim();
+  if (input.rate !== undefined) values.rate = money(input.rate);
+  if (input.sortOrder !== undefined) values.sortOrder = input.sortOrder;
+  if (input.isActive !== undefined) values.isActive = input.isActive;
+  if (Object.keys(values).length) await database.update(vatTypes).set(values).where(eq(vatTypes.id, input.id));
+  return { success: true };
+}
+
 export async function listAdminProducts() {
   const database = requireDb();
   return database
@@ -400,6 +433,7 @@ export async function listAdminProducts() {
       barcode: products.barcode,
       categoryId: products.categoryId,
       categoryName: categories.name,
+      vatTypeId: products.vatTypeId,
       salePrice: products.salePrice,
       vatRate: products.vatRate,
       lastPurchaseCost: products.lastPurchaseCost,
@@ -439,6 +473,7 @@ export async function updateProduct(input: {
   imageUrl?: string | null;
   sku?: string | null;
   barcode?: string | null;
+  vatTypeId?: number | null;
   vatRate?: number;
   lastPurchaseCost?: number;
   weightedAverageCost?: number;
@@ -454,7 +489,15 @@ export async function updateProduct(input: {
   if (input.imageUrl !== undefined) updateSet.imageUrl = input.imageUrl?.trim() || null;
   if (input.sku !== undefined) updateSet.sku = input.sku?.trim() || null;
   if (input.barcode !== undefined) updateSet.barcode = input.barcode?.trim() || null;
-  if (input.vatRate !== undefined) updateSet.vatRate = money(input.vatRate);
+  if (input.vatTypeId !== undefined) {
+    updateSet.vatTypeId = input.vatTypeId;
+    if (input.vatTypeId !== null) {
+      const selectedVat = await database.select({ rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.id, input.vatTypeId), eq(vatTypes.isActive, true))).limit(1);
+      if (!selectedVat[0]) throw new Error("El tipo de IVA seleccionado no existe o está inactivo.");
+      updateSet.vatRate = money(toNumber(selectedVat[0].rate));
+    }
+  }
+  if (input.vatRate !== undefined && input.vatTypeId === undefined) updateSet.vatRate = money(input.vatRate);
   if (input.lastPurchaseCost !== undefined) updateSet.lastPurchaseCost = money(input.lastPurchaseCost);
   if (input.weightedAverageCost !== undefined) updateSet.weightedAverageCost = money(input.weightedAverageCost);
   if (Object.keys(updateSet).length > 0) await database.update(products).set(updateSet).where(eq(products.id, input.id));
@@ -552,6 +595,7 @@ export async function createPurchaseInvoice(input: {
   documentUrl?: string;
   documentName?: string;
   ocrData?: unknown;
+  notes?: string;
   lines: Array<{ productId?: number; detectedName?: string; supplierReference?: string; quantity: number; unitCost: number; vatRate?: number; lineTotal: number }>;
 }) {
   const database = requireDb();
@@ -568,6 +612,7 @@ export async function createPurchaseInvoice(input: {
       documentUrl: input.documentUrl?.trim() || null,
       documentName: input.documentName?.trim() || null,
       ocrData: input.ocrData ?? null,
+      notes: input.notes?.trim() || null,
       ocrStatus: input.ocrData ? "ready" : "not_requested",
       status: "draft",
     });
@@ -727,4 +772,24 @@ export async function voidPurchaseInvoice(invoiceId: number) {
   if (invoice[0].status !== "draft") throw new Error("Solo se pueden anular facturas que aún no han sido recibidas.");
   await database.update(purchaseInvoices).set({ status: "void" }).where(eq(purchaseInvoices.id, invoiceId));
   return { success: true, id: invoiceId, status: "void" as const };
+}
+
+
+export async function listCashSessions(limit = 60) {
+  const database = requireDb();
+  const rows = await database.select().from(cashSessions).orderBy(desc(cashSessions.businessDate), desc(cashSessions.id)).limit(limit);
+  return Promise.all(rows.map(async (row) => {
+    const aggregate = await database.select({ totalSold: sql<string>`coalesce(sum(${sales.totalAmount}), 0)` }).from(sales).where(and(eq(sales.cashSessionId, row.id), eq(sales.status, "completed")));
+    return { ...row, totalSold: aggregate[0]?.totalSold ?? "0.00" };
+  }));
+}
+
+export async function updateClosedCashSession(input: { id: number; countedCash: number; countedCard: number; denominationCounts?: Record<string, number>; notes?: string | null }) {
+  const database = requireDb();
+  const current = await database.select().from(cashSessions).where(eq(cashSessions.id, input.id)).limit(1);
+  if (!current[0]) throw new Error("No se encontró la caja.");
+  if (current[0].status !== "closed") throw new Error("Solo se pueden editar cajas cerradas.");
+  const difference = money(input.countedCash - toNumber(current[0].expectedCash));
+  await database.update(cashSessions).set({ countedCash: money(input.countedCash), countedCard: money(input.countedCard), denominationCounts: input.denominationCounts ?? null, difference, notes: input.notes?.trim() || null }).where(eq(cashSessions.id, input.id));
+  return { success: true, id: input.id, difference };
 }

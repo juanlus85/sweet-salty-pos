@@ -9,6 +9,7 @@ import {
   getRecentSales,
   getDailyAnalysis,
   getSaleDetails,
+  listVatTypes,
   listCatalog,
   listCategories,
 } from "./services/pos";
@@ -28,6 +29,7 @@ const createProductSchema = z.object({
   name: z.string().trim().min(1).max(255),
   salePrice: z.number().nonnegative(),
   vatRate: z.number().min(0).max(100).optional(),
+  vatTypeId: z.number().int().positive().optional(),
   initialStock: z.number().min(0).optional(),
   minimumStock: z.number().min(0).optional(),
   sku: z.string().trim().max(100).optional(),
@@ -137,6 +139,34 @@ apiRouter.post("/cash/close", async (req, res, next) => {
 });
 
 
+apiRouter.get("/admin/vat-types", async (_req, res, next) => {
+  try {
+    res.json(await listVatTypes());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/vat-types", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), rate: z.number().min(0).max(100), sortOrder: z.number().int().optional() }), req.body);
+    const { createVatType } = await import("./services/pos");
+    res.status(201).json(await createVatType(input));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.patch("/admin/vat-types/:id", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), rate: z.number().min(0).max(100).optional(), sortOrder: z.number().int().optional(), isActive: z.boolean().optional() }), req.body);
+    const { updateVatType } = await import("./services/pos");
+    res.json(await updateVatType({ id: Number(req.params.id), ...input }));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/admin/products", async (_req, res, next) => {
   try {
     const { listAdminProducts } = await import("./services/pos");
@@ -169,6 +199,7 @@ apiRouter.patch("/admin/products/:id", async (req, res, next) => {
       sku: z.string().trim().max(100).nullable().optional(),
       barcode: z.string().trim().max(100).nullable().optional(),
       vatRate: z.number().min(0).max(100).optional(),
+      vatTypeId: z.number().int().positive().nullable().optional(),
       lastPurchaseCost: z.number().nonnegative().optional(),
       weightedAverageCost: z.number().nonnegative().optional(),
     }), req.body);
@@ -240,6 +271,7 @@ apiRouter.post("/admin/purchase-invoices", async (req, res, next) => {
       documentUrl: mediaPathSchema.optional(),
       documentName: z.string().max(255).optional(),
       ocrData: z.unknown().optional(),
+      notes: z.string().max(1000).optional(),
       lines: z.array(z.object({ productId: z.number().int().positive().optional(), detectedName: z.string().max(255).optional(), supplierReference: z.string().max(100).optional(), quantity: z.number().positive(), unitCost: z.number().nonnegative(), vatRate: z.number().min(0).max(100).optional(), lineTotal: z.number().nonnegative() })).min(1),
     }), req.body);
     const { createPurchaseInvoice } = await import("./services/pos");
@@ -342,6 +374,26 @@ apiRouter.post("/admin/purchase-invoices/:id/void", async (req, res, next) => {
   try {
     const { voidPurchaseInvoice } = await import("./services/pos");
     res.json(await voidPurchaseInvoice(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+apiRouter.get("/admin/cash-sessions", async (req, res, next) => {
+  try {
+    const { listCashSessions } = await import("./services/pos");
+    res.json(await listCashSessions(Number(req.query.limit ?? 60)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.patch("/admin/cash-sessions/:id", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ countedCash: z.number().nonnegative(), countedCard: z.number().nonnegative(), denominationCounts: z.record(z.string(), z.number().nonnegative()).optional(), notes: z.string().max(1000).nullable().optional() }), req.body);
+    const { updateClosedCashSession } = await import("./services/pos");
+    res.json(await updateClosedCashSession({ id: Number(req.params.id), ...input }));
   } catch (error) {
     next(error);
   }

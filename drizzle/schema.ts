@@ -32,6 +32,19 @@ export const posSettings = mysqlTable("pos_settings", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 
+export const vatTypes = mysqlTable("pos_vat_types", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  rate: decimal("rate", { precision: 5, scale: 2 }).notNull(),
+  sortOrder: int("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_vat_types_name_unique").on(table.name),
+  uniqueIndex("pos_vat_types_rate_unique").on(table.rate),
+]);
+
 export const categories = mysqlTable("pos_categories", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
@@ -68,6 +81,7 @@ export const products = mysqlTable("pos_products", {
   id: int("id").autoincrement().primaryKey(),
   categoryId: int("category_id").notNull(),
   primarySupplierId: int("primary_supplier_id"),
+  vatTypeId: int("vat_type_id"),
   name: varchar("name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }),
   barcode: varchar("barcode", { length: 100 }),
@@ -75,7 +89,7 @@ export const products = mysqlTable("pos_products", {
   imageUrl: text("image_url"),
   unit: varchar("unit", { length: 32 }).notNull().default("unidad"),
   salePrice: money("sale_price").notNull().default("0.00"),
-  vatRate: decimal("vat_rate", { precision: 5, scale: 2 }).notNull().default("7.00"),
+  vatRate: decimal("vat_rate", { precision: 5, scale: 2 }).notNull().default("10.00"),
   lastPurchaseCost: money("last_purchase_cost").notNull().default("0.00"),
   weightedAverageCost: money("weighted_average_cost").notNull().default("0.00"),
   minimumStock: quantity("minimum_stock").notNull().default("0.000"),
@@ -138,7 +152,7 @@ export const purchaseInvoiceLines = mysqlTable("pos_purchase_invoice_lines", {
   detectedName: varchar("detected_name", { length: 255 }),
   quantity: quantity("quantity").notNull(),
   unitCost: money("unit_cost").notNull(),
-  vatRate: decimal("vat_rate", { precision: 5, scale: 2 }).notNull().default("7.00"),
+  vatRate: decimal("vat_rate", { precision: 5, scale: 2 }).notNull().default("10.00"),
   lineTotal: money("line_total").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -188,7 +202,7 @@ export const saleLines = mysqlTable("pos_sale_lines", {
   quantity: quantity("quantity").notNull(),
   unitPrice: money("unit_price").notNull(),
   unitCost: money("unit_cost").notNull().default("0.00"),
-  vatRate: decimal("vat_rate", { precision: 5, scale: 2 }).notNull().default("7.00"),
+  vatRate: decimal("vat_rate", { precision: 5, scale: 2 }).notNull().default("10.00"),
   lineSubtotal: money("line_subtotal").notNull(),
   lineVat: money("line_vat").notNull().default("0.00"),
   lineTotal: money("line_total").notNull(),
