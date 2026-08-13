@@ -1,0 +1,1 @@
+ALTER TABLE `pos_purchase_invoices` ADD `detected_supplier_name` varchar(255);
