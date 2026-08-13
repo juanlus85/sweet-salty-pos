@@ -458,6 +458,7 @@ export async function listAdminProducts() {
       weightedAverageCost: products.weightedAverageCost,
       minimumStock: products.minimumStock,
       isFeatured: products.isFeatured,
+      showInTpv: products.showInTpv,
       imageUrl: products.imageUrl,
       stock: inventoryBalances.quantityOnHand,
       isActive: products.isActive,
@@ -611,6 +612,19 @@ export async function createSupplier(input: { name: string; legalName?: string; 
   return { id: Number(inserted[0].insertId) };
 }
 
+export async function updateSupplier(input: { id: number; name?: string; legalName?: string | null; taxId?: string | null; phone?: string | null; email?: string | null; notes?: string | null }) {
+  const database = requireDb();
+  const values: Record<string, unknown> = {};
+  if (input.name !== undefined) values.name = input.name.trim();
+  if (input.legalName !== undefined) values.legalName = input.legalName?.trim() || null;
+  if (input.taxId !== undefined) values.taxId = input.taxId?.trim() || null;
+  if (input.phone !== undefined) values.phone = input.phone?.trim() || null;
+  if (input.email !== undefined) values.email = input.email?.trim() || null;
+  if (input.notes !== undefined) values.notes = input.notes?.trim() || null;
+  if (Object.keys(values).length > 0) await database.update(suppliers).set(values).where(eq(suppliers.id, input.id));
+  return { success: true, id: input.id };
+}
+
 export async function listSalesReport() {
   const database = requireDb();
   const rows = await database
@@ -644,6 +658,7 @@ export async function listPurchaseInvoices() {
     })
     .from(purchaseInvoices)
     .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+    .where(sql`${purchaseInvoices.status} <> 'void'`)
     .orderBy(desc(purchaseInvoices.createdAt));
 }
 

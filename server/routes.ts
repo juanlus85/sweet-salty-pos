@@ -401,6 +401,16 @@ apiRouter.delete("/admin/products/:id", async (req, res, next) => {
   }
 });
 
+apiRouter.patch("/admin/suppliers/:id", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(255).optional(), legalName: z.string().trim().max(255).nullable().optional(), taxId: z.string().trim().max(100).nullable().optional(), phone: z.string().trim().max(100).nullable().optional(), email: z.string().trim().email().nullable().optional(), notes: z.string().trim().max(2000).nullable().optional() }), req.body);
+    const { updateSupplier } = await import("./services/pos");
+    res.json(await updateSupplier({ id: Number(req.params.id), ...input }));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.delete("/admin/suppliers/:id", async (req, res, next) => {
   try {
     const { deactivateSupplier } = await import("./services/pos");
