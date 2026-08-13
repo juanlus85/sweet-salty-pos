@@ -128,16 +128,17 @@ function PosScreen() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [order, setOrder] = useState<"popular" | "alphabetical">("popular");
   const [search, setSearch] = useState("");
+  const isSearching = search.trim().length > 0;
   const [cart, setCart] = useState<CartLine[]>([]);
   const [isPaying, setIsPaying] = useState(false);
   const [ticketMenuOpen, setTicketMenuOpen] = useState(false);
 
   const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/categories") });
   const catalogQuery = useQuery({
-    queryKey: ["catalog", selectedCategory, order],
-    queryFn: () => api<Product[]>(`/catalog?order=${order}${selectedCategory ? `&categoryId=${selectedCategory}` : ""}`),
+    queryKey: ["catalog", isSearching ? null : selectedCategory, order],
+    queryFn: () => api<Product[]>(`/catalog?order=${order}${!isSearching && selectedCategory ? `&categoryId=${selectedCategory}` : ""}`),
   });
-  const featuredQuery = useQuery({ queryKey: ["featured"], queryFn: () => api<Product[]>("/catalog/featured"), enabled: selectedCategory === null });
+  const featuredQuery = useQuery({ queryKey: ["featured"], queryFn: () => api<Product[]>("/catalog/featured"), enabled: selectedCategory === null && !isSearching });
   const checkoutMutation = useMutation({
     mutationFn: (payload: { method: "cash" | "card"; tendered?: number; reference?: string }) => api<CheckoutResult>("/checkout", {
       method: "POST",
@@ -170,11 +171,11 @@ function PosScreen() {
     }
   };
 
-  const allProducts = selectedCategory === null ? (featuredQuery.data ?? catalogQuery.data ?? []) : (catalogQuery.data ?? []);
+  const allProducts = isSearching ? (catalogQuery.data ?? []) : selectedCategory === null ? (featuredQuery.data ?? catalogQuery.data ?? []) : (catalogQuery.data ?? []);
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("es");
     if (!term) return allProducts;
-    return allProducts.filter((product) => `${product.name} ${product.sku ?? ""}`.toLocaleLowerCase("es").includes(term));
+    return allProducts.filter((product) => `${product.name} ${product.sku ?? ""} ${product.barcode ?? ""}`.toLocaleLowerCase("es").includes(term));
   }, [allProducts, search]);
   const totalUnits = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.reduce((sum, line) => sum + Number(line.salePrice) * line.quantity, 0);
@@ -212,7 +213,7 @@ function PosScreen() {
           </div>
         </div>
 
-        {selectedCategory === null && (
+        {selectedCategory === null && !isSearching && (
           <section className="families-section">
             <div className="section-heading"><h2>Familias</h2><span>{categoriesQuery.data?.length ?? 0} grupos</span></div>
             <div className="family-grid">
@@ -222,7 +223,7 @@ function PosScreen() {
         )}
 
         <section className="products-section">
-          <div className="section-heading"><h2>{selectedCategory === null ? "Más vendidos" : "Artículos"}</h2>{selectedCategory !== null && <button className="text-button" onClick={() => setSelectedCategory(null)}>Volver a familias</button>}</div>
+          <div className="section-heading"><h2>{isSearching ? `Resultados para «${search.trim()}»` : selectedCategory === null ? "Más vendidos" : "Artículos"}</h2>{isSearching ? <button className="text-button" onClick={() => setSearch("")}>Limpiar búsqueda</button> : selectedCategory !== null && <button className="text-button" onClick={() => setSelectedCategory(null)}>Volver a familias</button>}</div>
           <div className="product-grid">
             {(catalogQuery.isLoading || featuredQuery.isLoading) && <div className="empty-products">Cargando catálogo…</div>}
             {!catalogQuery.isLoading && !featuredQuery.isLoading && visibleProducts.length === 0 && <div className="empty-products"><PackageOpen size={32} /><strong>No hay artículos para mostrar</strong><span>Comprueba el filtro o crea productos en Administración.</span></div>}

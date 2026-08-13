@@ -75,7 +75,8 @@ export async function listCatalog(categoryId?: number, order: "alphabetical" | "
 
 export async function getFeaturedProducts() {
   const database = requireDb();
-  return database
+  const soldUnits = sql<string>`coalesce(sum(case when ${sales.status} = 'completed' then ${saleLines.quantity} else 0 end), 0)`;
+  const rows = await database
     .select({
       id: products.id,
       categoryId: products.categoryId,
@@ -88,12 +89,19 @@ export async function getFeaturedProducts() {
       salePrice: products.salePrice,
       vatRate: products.vatRate,
       stock: inventoryBalances.quantityOnHand,
+      isFeatured: products.isFeatured,
+      soldUnits,
     })
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id))
-    .where(and(eq(products.isActive, true), eq(products.showInTpv, true), eq(products.isFeatured, true)))
-    .orderBy(asc(products.name));
+    .leftJoin(saleLines, eq(saleLines.productId, products.id))
+    .leftJoin(sales, eq(sales.id, saleLines.saleId))
+    .where(and(eq(products.isActive, true), eq(products.showInTpv, true)))
+    .groupBy(products.id, categories.name, inventoryBalances.quantityOnHand)
+    .orderBy(desc(soldUnits), desc(products.isFeatured), asc(products.name))
+    .limit(12);
+  return rows.map((row) => ({ ...row, stock: row.stock ?? "0.000", soldUnits: row.soldUnits ?? "0" }));
 }
 
 export async function createProduct(input: {
