@@ -1,0 +1,187 @@
+{
+  "rows": 329,
+  "columns": [
+    "Handle",
+    "REF",
+    "Nombre",
+    "Categoria",
+    "Descripción",
+    "Vendido por peso",
+    "Opción 1 nombre",
+    "Opción 1 valor",
+    "Opción 2 nombre",
+    "Opción 2 valor",
+    "Opción 3 nombre",
+    "Opción 3 valor",
+    "Coste",
+    "Codigo de barras",
+    "REF del componente",
+    "Cantidad del componente",
+    "Seguir el Inventario",
+    "Disponibles para la venta [Sweet & Salty]",
+    "Precio [Sweet & Salty]",
+    "En inventario [Sweet & Salty]",
+    "Existencias bajas [Sweet & Salty]",
+    "modificador - \"Descuentos\"",
+    "impuesto - \"IVA\" (10%)",
+    "impuesto - \"IVA Gen.\" (21%)"
+  ],
+  "families": {
+    "Baguettes y Pizzas": 24,
+    "Patatas": 19,
+    "Salado": 14,
+    "Bebidas": 19,
+    "Dulce": 32,
+    "Latas": 32,
+    "Chocolates": 31,
+    "(sin familia)": 21,
+    "Pasteles": 25,
+    "Varios": 21,
+    "Frutos Secos": 18,
+    "Chicles": 10,
+    "Helados": 24,
+    "Botellas 500": 8,
+    "Botellas 2L": 6,
+    "Vinos y Licores": 25
+  },
+  "family_count": 16,
+  "duplicate_handles": {
+    "fresa": [
+      28,
+      29,
+      30
+    ],
+    "biofrutas": [
+      33,
+      34
+    ],
+    "halls": [
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129
+    ],
+    "tableta-milka": [
+      279,
+      280,
+      281,
+      282,
+      283,
+      284,
+      285
+    ],
+    "trident": [
+      294,
+      295,
+      296,
+      297
+    ],
+    "chocolate": [
+      328,
+      329,
+      330
+    ]
+  },
+  "duplicate_refs": {},
+  "duplicate_barcodes": {},
+  "visible_for_sale": {
+    "Y": 280,
+    "N": 49
+  },
+  "inventory_tracking": {
+    "Y": 299,
+    "": 21,
+    "N": 9
+  },
+  "vat_10": 250,
+  "vat_21": 57,
+  "empty_names": [
+    29,
+    30,
+    34,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    280,
+    281,
+    282,
+    283,
+    284,
+    285,
+    295,
+    296,
+    297,
+    329,
+    330
+  ],
+  "negative_stock": [
+    {
+      "row": 16,
+      "name": "a13. Piripi",
+      "stock": "-1.000"
+    },
+    {
+      "row": 31,
+      "name": "Berlina",
+      "stock": "-4.000"
+    },
+    {
+      "row": 33,
+      "name": "Biofrutas",
+      "stock": "-2.000"
+    },
+    {
+      "row": 51,
+      "name": "Cafe Frio",
+      "stock": "-1.000"
+    },
+    {
+      "row": 108,
+      "name": "Fritos BBQ",
+      "stock": "-1.000"
+    },
+    {
+      "row": 123,
+      "name": "",
+      "stock": "-1.000"
+    },
+    {
+      "row": 154,
+      "name": "Lays Campesinas",
+      "stock": "-3.000"
+    },
+    {
+      "row": 272,
+      "name": "Smarties",
+      "stock": "-1.000"
+    },
+    {
+      "row": 275,
+      "name": "Snickers Bar",
+      "stock": "-1.000"
+    },
+    {
+      "row": 283,
+      "name": "",
+      "stock": "-3.000"
+    },
+    {
+      "row": 295,
+      "name": "",
+      "stock": "-7.000"
+    },
+    {
+      "row": 297,
+      "name": "",
+      "stock": "-1.000"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+products	341
+categories	18
+visible_tpv	292
+hidden_tpv	49
+vat_0	1
+vat_10	272
+vat_21	58
+surcharge_1_4	271
+surcharge_5_2	57
+negative_stock	12
+0
+0

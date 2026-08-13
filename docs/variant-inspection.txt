@@ -1,0 +1,53 @@
+VAT combinations: {(True, False): 250, (False, True): 57, (False, False): 22}
+
+Rows with empty name:
+29 {'Handle': 'fresa', 'REF': '10059', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Fresa', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.35', 'Precio [Sweet & Salty]': '1.00', 'En inventario [Sweet & Salty]': '0.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+30 {'Handle': 'fresa', 'REF': '10061', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Vainilla', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.37', 'Precio [Sweet & Salty]': '1.00', 'En inventario [Sweet & Salty]': '0.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+34 {'Handle': 'biofrutas', 'REF': '10214', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Mini', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.33', 'Precio [Sweet & Salty]': '1.20', 'En inventario [Sweet & Salty]': '36.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+123 {'Handle': 'halls', 'REF': '10028', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Fresa', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '-1.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+124 {'Handle': 'halls', 'REF': '10166', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Lima', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '0.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+125 {'Handle': 'halls', 'REF': '10206', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Liquorice', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '3.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+126 {'Handle': 'halls', 'REF': '10163', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Menta Azul', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '16.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+127 {'Handle': 'halls', 'REF': '10164', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Menta Negro', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '18.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+128 {'Handle': 'halls', 'REF': '10162', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Miel-Limón', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '19.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+129 {'Handle': 'halls', 'REF': '10004', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Sandía', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.58', 'Precio [Sweet & Salty]': '2.00', 'En inventario [Sweet & Salty]': '11.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+280 {'Handle': 'tableta-milka', 'REF': '10201', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Caramelo', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '1.13', 'Precio [Sweet & Salty]': '2.50', 'En inventario [Sweet & Salty]': '0.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+281 {'Handle': 'tableta-milka', 'REF': '10138', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Chips Ahoy', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '1.13', 'Precio [Sweet & Salty]': '2.50', 'En inventario [Sweet & Salty]': '11.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+282 {'Handle': 'tableta-milka', 'REF': '10128', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Leche', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '1.13', 'Precio [Sweet & Salty]': '2.50', 'En inventario [Sweet & Salty]': '0.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+283 {'Handle': 'tableta-milka', 'REF': '10078', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Oreo', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '1.13', 'Precio [Sweet & Salty]': '2.50', 'En inventario [Sweet & Salty]': '-3.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+284 {'Handle': 'tableta-milka', 'REF': '10129', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Oreo Blanco', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '1.13', 'Precio [Sweet & Salty]': '2.50', 'En inventario [Sweet & Salty]': '0.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+285 {'Handle': 'tableta-milka', 'REF': '10199', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Oreo Sandwich', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '1.13', 'Precio [Sweet & Salty]': '2.50', 'En inventario [Sweet & Salty]': '4.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+295 {'Handle': 'trident', 'REF': '10158', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Fresa', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.40', 'Precio [Sweet & Salty]': '1.20', 'En inventario [Sweet & Salty]': '-7.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+296 {'Handle': 'trident', 'REF': '10096', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Hierbabuena', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.40', 'Precio [Sweet & Salty]': '1.20', 'En inventario [Sweet & Salty]': '8.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+297 {'Handle': 'trident', 'REF': '10157', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Menta', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.40', 'Precio [Sweet & Salty]': '1.20', 'En inventario [Sweet & Salty]': '-1.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+329 {'Handle': 'chocolate', 'REF': '10094', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Multifruta', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.25', 'Precio [Sweet & Salty]': '1.00', 'En inventario [Sweet & Salty]': '9.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+330 {'Handle': 'chocolate', 'REF': '10095', 'Nombre': '', 'Categoria': '', 'Opción 1 nombre': '', 'Opción 1 valor': 'Piña', 'Opción 2 nombre': '', 'Opción 2 valor': '', 'Coste': '0.25', 'Precio [Sweet & Salty]': '1.00', 'En inventario [Sweet & Salty]': '12.000', 'Disponibles para la venta [Sweet & Salty]': 'Y'}
+
+Rows with options and name:
+28 Batidos ['20cl=Chocolate'] 1.00 0.30
+29  ['=Fresa'] 1.00 0.35
+30  ['=Vainilla'] 1.00 0.37
+33 Biofrutas ['Tamaño=Grande'] 1.50 0.54
+34  ['=Mini'] 1.20 0.33
+122 Halls ['Sabor=Cítrico'] 2.00 0.58
+123  ['=Fresa'] 2.00 0.58
+124  ['=Lima'] 2.00 0.58
+125  ['=Liquorice'] 2.00 0.58
+126  ['=Menta Azul'] 2.00 0.58
+127  ['=Menta Negro'] 2.00 0.58
+128  ['=Miel-Limón'] 2.00 0.58
+129  ['=Sandía'] 2.00 0.58
+279 Tableta Milka ['Tipo=Biscoff'] 2.50 1.13
+280  ['=Caramelo'] 2.50 1.13
+281  ['=Chips Ahoy'] 2.50 1.13
+282  ['=Leche'] 2.50 1.13
+283  ['=Oreo'] 2.50 1.13
+284  ['=Oreo Blanco'] 2.50 1.13
+285  ['=Oreo Sandwich'] 2.50 1.13
+294 Trident ['Sabor=60 minutos'] 1.20 0.40
+295  ['=Fresa'] 1.20 0.40
+296  ['=Hierbabuena'] 1.20 0.40
+297  ['=Menta'] 1.20 0.40
+328 Zumo 20cl ['Sabor=Melocoton'] 1.00 0.25
+329  ['=Multifruta'] 1.00 0.25
+330  ['=Piña'] 1.00 0.25

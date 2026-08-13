@@ -42,7 +42,7 @@ export async function listCategories() {
 export async function listCatalog(categoryId?: number, order: "alphabetical" | "popular" = "popular") {
   const database = requireDb();
   const orderBy = order === "alphabetical" ? [asc(products.name)] : [desc(products.isFeatured), asc(products.name)];
-  const conditions = [eq(products.isActive, true)];
+  const conditions = [eq(products.isActive, true), eq(products.showInTpv, true)];
   if (categoryId) conditions.push(eq(products.categoryId, categoryId));
 
   const rows = await database
@@ -92,7 +92,7 @@ export async function getFeaturedProducts() {
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id))
-    .where(and(eq(products.isActive, true), eq(products.isFeatured, true)))
+    .where(and(eq(products.isActive, true), eq(products.showInTpv, true), eq(products.isFeatured, true)))
     .orderBy(asc(products.name));
 }
 
@@ -102,6 +102,12 @@ export async function createProduct(input: {
   salePrice: number;
   vatRate?: number;
   vatTypeId?: number;
+  equivalenceSurchargeRate?: number;
+  lastPurchaseCostBeforeSurcharge?: number;
+  lastPurchaseCost?: number;
+  weightedAverageCostBeforeSurcharge?: number;
+  weightedAverageCost?: number;
+  showInTpv?: boolean;
   initialStock?: number;
   minimumStock?: number;
   sku?: string;
@@ -124,6 +130,12 @@ export async function createProduct(input: {
       name: input.name.trim(),
       salePrice: money(input.salePrice),
       vatRate: money(resolvedVatRate),
+      equivalenceSurchargeRate: money(input.equivalenceSurchargeRate ?? (resolvedVatRate === 10 ? 1.4 : resolvedVatRate === 21 ? 5.2 : 0)),
+      lastPurchaseCostBeforeSurcharge: money(input.lastPurchaseCostBeforeSurcharge ?? 0),
+      lastPurchaseCost: money(input.lastPurchaseCost ?? input.lastPurchaseCostBeforeSurcharge ?? 0),
+      weightedAverageCostBeforeSurcharge: money(input.weightedAverageCostBeforeSurcharge ?? 0),
+      weightedAverageCost: money(input.weightedAverageCost ?? input.weightedAverageCostBeforeSurcharge ?? 0),
+      showInTpv: input.showInTpv ?? true,
       minimumStock: quantity(input.minimumStock ?? 0),
       sku: input.sku?.trim() || null,
       barcode: input.barcode?.trim() || null,
@@ -518,8 +530,12 @@ export async function updateProduct(input: {
   barcode?: string | null;
   vatTypeId?: number | null;
   vatRate?: number;
+  lastPurchaseCostBeforeSurcharge?: number;
   lastPurchaseCost?: number;
+  weightedAverageCostBeforeSurcharge?: number;
   weightedAverageCost?: number;
+  equivalenceSurchargeRate?: number;
+  showInTpv?: boolean;
 }) {
   const database = requireDb();
   const updateSet: Record<string, unknown> = {};
@@ -528,6 +544,7 @@ export async function updateProduct(input: {
   if (input.salePrice !== undefined) updateSet.salePrice = money(input.salePrice);
   if (input.minimumStock !== undefined) updateSet.minimumStock = quantity(input.minimumStock);
   if (input.isFeatured !== undefined) updateSet.isFeatured = input.isFeatured;
+  if (input.showInTpv !== undefined) updateSet.showInTpv = input.showInTpv;
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
   if (input.imageUrl !== undefined) updateSet.imageUrl = input.imageUrl?.trim() || null;
   if (input.sku !== undefined) updateSet.sku = input.sku?.trim() || null;
@@ -541,7 +558,10 @@ export async function updateProduct(input: {
     }
   }
   if (input.vatRate !== undefined && input.vatTypeId === undefined) updateSet.vatRate = money(input.vatRate);
+  if (input.equivalenceSurchargeRate !== undefined) updateSet.equivalenceSurchargeRate = money(input.equivalenceSurchargeRate);
+  if (input.lastPurchaseCostBeforeSurcharge !== undefined) updateSet.lastPurchaseCostBeforeSurcharge = money(input.lastPurchaseCostBeforeSurcharge);
   if (input.lastPurchaseCost !== undefined) updateSet.lastPurchaseCost = money(input.lastPurchaseCost);
+  if (input.weightedAverageCostBeforeSurcharge !== undefined) updateSet.weightedAverageCostBeforeSurcharge = money(input.weightedAverageCostBeforeSurcharge);
   if (input.weightedAverageCost !== undefined) updateSet.weightedAverageCost = money(input.weightedAverageCost);
   if (Object.keys(updateSet).length > 0) await database.update(products).set(updateSet).where(eq(products.id, input.id));
   return { success: true };

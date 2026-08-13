@@ -1,0 +1,27 @@
+{
+  "rows": 329,
+  "categoriesCreated": [
+    "Baguettes y Pizzas",
+    "Patatas",
+    "Salado",
+    "Dulce",
+    "Latas",
+    "Chocolates",
+    "Pasteles",
+    "Varios",
+    "Frutos Secos",
+    "Chicles",
+    "Helados",
+    "Botellas 500",
+    "Botellas 2L",
+    "Vinos y Licores"
+  ],
+  "productsCreated": 329,
+  "productsUpdated": 0,
+  "vatIds": {
+    "0": 1,
+    "4": 2,
+    "10": 3,
+    "21": 4
+  }
+}

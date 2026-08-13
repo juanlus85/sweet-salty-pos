@@ -270,7 +270,7 @@ apiRouter.get("/admin/suppliers", async (_req, res, next) => {
 
 apiRouter.post("/admin/suppliers", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ name: z.string().trim().min(1).max(255), legalName: z.string().max(255).optional(), taxId: z.string().max(64).optional(), phone: z.string().max(50).optional(), email: z.string().email().max(320).optional(), notes: z.string().max(500).optional() }), req.body);
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(255), legalName: z.string().max(255).optional(), taxId: z.string().max(64).optional(), phone: z.string().max(50).optional(), email: z.preprocess((value) => value === "" ? undefined : value, z.string().email().max(320).optional()), notes: z.string().max(500).optional() }), req.body);
     const { createSupplier } = await import("./services/pos");
     res.status(201).json(await createSupplier(input));
   } catch (error) {
