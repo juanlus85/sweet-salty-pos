@@ -132,3 +132,13 @@ button:disabled { cursor: not-allowed; }
   .family-card, .product-tile, .sort-button, .search-field, .ticket-menu button, .quantity-control button, .charge-button, .save-ticket-button { min-height: 44px; }
   .quantity-control button { min-width: 40px; }
 }
+
+/* Catálogo desplazable y ticket fijo en escritorio y tablet horizontal */
+@media (min-width: 761px) {
+  html, body, #root { height: 100%; overflow: hidden; }
+  .pos-shell { height: 100vh; min-height: 0; overflow: hidden; }
+  .catalog-panel { height: 100vh; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+  .ticket-panel { height: 100vh; min-height: 0; overflow: hidden; }
+  .ticket-lines { min-height: 0; overflow-y: auto; }
+  .ticket-footer { flex: none; position: sticky; bottom: 0; z-index: 2; background: #fff; }
+}
