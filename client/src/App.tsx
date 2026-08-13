@@ -379,7 +379,7 @@ function AdminScreen({ onBack }: { onBack: () => void }) {
   const saveProduct = () => { if (editingProductId) updateProductMutation.mutate(); else createProductMutation.mutate(); };
   const editProduct = (product: AdminProduct) => { setEditingProductId(product.id); setProductForm({ name: product.name, salePrice: product.salePrice, initialStock: product.stock, categoryId: String(product.categoryId), vatTypeId: product.vatTypeId ? String(product.vatTypeId) : (vatTypesQuery.data?.find((vatType) => Number(vatType.rate) === Number(product.vatRate))?.id ? String(vatTypesQuery.data.find((vatType) => Number(vatType.rate) === Number(product.vatRate))?.id) : ""), vatRate: product.vatRate, barcode: product.barcode ?? "", minimumStock: product.minimumStock }); setProductImageUrl(product.imageUrl); setProductFormOpen(true); setTab("products"); };
   const createSupplierMutation = useMutation({
-    mutationFn: () => api<{ id: number }>("/admin/suppliers", { method: "POST", body: JSON.stringify(supplierForm) }),
+    mutationFn: () => api<{ id: number }>("/admin/suppliers", { method: "POST", body: JSON.stringify({ name: supplierForm.name, legalName: supplierForm.legalName, taxId: supplierForm.taxId, phone: supplierForm.phone }) }),
     onSuccess: () => { setSupplierForm({ name: "", legalName: "", taxId: "", phone: "", email: "" }); setSupplierFormOpen(false); toast.success("Proveedor añadido"); invalidateAdmin(); },
     onError: (error) => toast.error("No se ha podido crear el proveedor", { description: error.message }),
   });

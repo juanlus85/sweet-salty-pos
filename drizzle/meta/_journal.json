@@ -43,6 +43,13 @@
       "when": 1786644308347,
       "tag": "0005_broad_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1786645740683,
+      "tag": "0006_magical_owl",
+      "breakpoints": true
     }
   ]
 }
