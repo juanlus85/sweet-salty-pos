@@ -164,7 +164,7 @@ function PosScreen() {
     try {
       const result = await api<{ supported: boolean; opened?: boolean; message: string }>("/hardware/drawer/open", { method: "POST", body: JSON.stringify({ reason }) });
       if (result.opened) toast.success("Cajón abierto");
-      else toast.message("Cajón no configurado", { description: result.message });
+      else if (reason === "manual") toast.message("Cajón no configurado", { description: result.message });
     } catch (error) {
       toast.error("No se ha podido abrir el cajón", { description: error instanceof Error ? error.message : "Error de comunicación" });
     }

@@ -490,10 +490,6 @@ export async function createCategory(input: { name: string; color?: string; imag
 
 export async function updateCategory(input: { id: number; name?: string; color?: string; imageUrl?: string | null; iconName?: string; sortOrder?: number; isFeatured?: boolean; isActive?: boolean }) {
   const database = requireDb();
-  if (input.isActive === false) {
-    const assigned = await database.select({ count: sql<number>`count(*)` }).from(products).where(and(eq(products.categoryId, input.id), eq(products.isActive, true)));
-    if (Number(assigned[0]?.count ?? 0) > 0) throw new Error("No se puede retirar una familia que todavía tiene artículos activos. Reasígnalos primero.");
-  }
   const updateSet: Partial<typeof categories.$inferInsert> = {};
   if (input.name !== undefined) updateSet.name = input.name.trim();
   if (input.color !== undefined) updateSet.color = input.color;
@@ -502,6 +498,13 @@ export async function updateCategory(input: { id: number; name?: string; color?:
   if (input.sortOrder !== undefined) updateSet.sortOrder = input.sortOrder;
   if (input.isFeatured !== undefined) updateSet.isFeatured = input.isFeatured;
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
+  if (input.isActive === false) {
+    await database.transaction(async (tx) => {
+      await tx.update(categories).set({ isActive: false }).where(eq(categories.id, input.id));
+      await tx.update(products).set({ isActive: false }).where(and(eq(products.categoryId, input.id), eq(products.isActive, true)));
+    });
+    delete updateSet.isActive;
+  }
   if (Object.keys(updateSet).length > 0) await database.update(categories).set(updateSet).where(eq(categories.id, input.id));
   return { success: true };
 }
