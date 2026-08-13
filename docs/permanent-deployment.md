@@ -10,7 +10,7 @@ Este paquete instala Sweet & Salty POS en `sweetsalty.thespotcentralhostel.com` 
 
 En Plesk, crea el subdominio `sweetsalty.thespotcentralhostel.com` dentro del dominio principal y activa un certificado SSL válido para ese subdominio. Configura el document root del subdominio en una carpeta exclusiva, por ejemplo `sweetsalty.thespotcentralhostel.com/httpdocs`.
 
-La aplicación escucha internamente en el puerto `3010`. Plesk debe actuar como proxy inverso hacia ese proceso Node.js. No es necesario exponer el puerto 3010 directamente a Internet.
+La aplicación escucha internamente en el puerto `3000`. Plesk debe actuar como proxy inverso hacia ese proceso Node.js. No es necesario exponer el puerto 3000 directamente a Internet.
 
 ## 2. Base de datos exclusiva
 
@@ -19,7 +19,7 @@ Crea una base de datos nueva, por ejemplo `sweetsalty_pos`, y un usuario exclusi
 ```text
 DATABASE_URL=mysql://sweetsalty_pos_user:CONTRASEÑA@localhost:3306/sweetsalty_pos
 BUSINESS_TIMEZONE=Europe/Madrid
-PORT=3010
+PORT=3000
 NODE_ENV=production
 ```
 
@@ -48,7 +48,7 @@ pm2 save
 pm2 startup
 ```
 
-Si Plesk gestiona directamente la aplicación Node.js, usa `dist/index.js` como archivo de inicio, el puerto `3010` y `NODE_ENV=production`. Comprueba que `/api/health` responde con `status: ok` antes de abrir el subdominio al personal.
+Si Plesk gestiona directamente la aplicación Node.js, usa `dist/index.js` como archivo de inicio, el puerto `3000` y `NODE_ENV=production`. Comprueba que `/api/health` responde con `status: ok` antes de abrir el subdominio al personal.
 
 ## 5. Restauración de los datos de la demo
 
