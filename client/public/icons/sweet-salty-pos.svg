@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sweet and Salty POS">
+  <rect width="512" height="512" rx="106" fill="#2FA346"/>
+  <path d="M144 146h224v220c0 17.7-14.3 32-32 32H176c-17.7 0-32-14.3-32-32V146Z" fill="#F7FBF4"/>
+  <path d="M144 146h224v74H144z" fill="#8BC34A"/>
+  <path d="M184 258h144M184 302h144M184 346h78" stroke="#3E7350" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="330" cy="346" r="19" fill="#F08B4E"/>
+  <path d="M202 104h108c12 0 22 10 22 22v20H180v-20c0-12 10-22 22-22Z" fill="#F08B4E"/>
+</svg>

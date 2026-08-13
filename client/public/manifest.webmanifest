@@ -1,0 +1,20 @@
+{
+  "name": "Sweet & Salty POS",
+  "short_name": "Sweet & Salty",
+  "description": "Terminal de punto de venta Sweet & Salty.",
+  "lang": "es-ES",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f2",
+  "theme_color": "#37a94d",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/sweet-salty-pos.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

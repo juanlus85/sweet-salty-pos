@@ -50,6 +50,7 @@ export const categories = mysqlTable("pos_categories", {
   name: varchar("name", { length: 100 }).notNull(),
   color: varchar("color", { length: 7 }).notNull().default("#155E75"),
   imageUrl: text("image_url"),
+  iconName: varchar("icon_name", { length: 64 }).notNull().default("Package"),
   sortOrder: int("sort_order").notNull().default(0),
   isFeatured: boolean("is_featured").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),

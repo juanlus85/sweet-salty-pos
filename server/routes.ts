@@ -176,11 +176,50 @@ apiRouter.get("/admin/products", async (_req, res, next) => {
   }
 });
 
+apiRouter.get("/admin/categories", async (_req, res, next) => {
+  try {
+    const { listAdminCategories } = await import("./services/pos");
+    res.json(await listAdminCategories());
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.post("/admin/categories", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional() }), req.body);
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional() }), req.body);
     const { createCategory } = await import("./services/pos");
     res.status(201).json(await createCategory(input));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.patch("/admin/categories/:id", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.nullable().optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isActive: z.boolean().optional() }), req.body);
+    const { updateCategory } = await import("./services/pos");
+    res.json(await updateCategory({ id: Number(req.params.id), ...input }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/categories/reorder", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ items: z.array(z.object({ id: z.number().int().positive(), sortOrder: z.number().int().nonnegative() })).min(1) }), req.body);
+    const { reorderCategories } = await import("./services/pos");
+    res.json(await reorderCategories(input.items));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/category-images", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ fileData: z.string().min(20), fileName: z.string().min(1).max(255), contentType: z.string() }), req.body);
+    const { saveCategoryImage } = await import("./services/uploads");
+    res.status(201).json(await saveCategoryImage(input));
   } catch (error) {
     next(error);
   }
@@ -394,6 +433,26 @@ apiRouter.patch("/admin/cash-sessions/:id", async (req, res, next) => {
     const input = parseBody(z.object({ countedCash: z.number().nonnegative(), countedCard: z.number().nonnegative(), denominationCounts: z.record(z.string(), z.number().nonnegative()).optional(), notes: z.string().max(1000).nullable().optional() }), req.body);
     const { updateClosedCashSession } = await import("./services/pos");
     res.json(await updateClosedCashSession({ id: Number(req.params.id), ...input }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+apiRouter.get("/hardware/drawer/status", async (_req, res, next) => {
+  try {
+    const { probeDrawerBridge } = await import("./services/hardware");
+    res.json(await probeDrawerBridge());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/hardware/drawer/open", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ reason: z.enum(["cash_sale", "manual"]).optional() }), req.body ?? {});
+    const { openCashDrawer } = await import("./services/hardware");
+    res.json(await openCashDrawer({ reason: input.reason }));
   } catch (error) {
     next(error);
   }

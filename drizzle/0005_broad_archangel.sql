@@ -1,0 +1,1 @@
+ALTER TABLE `pos_categories` ADD `icon_name` varchar(64) DEFAULT 'Package' NOT NULL;

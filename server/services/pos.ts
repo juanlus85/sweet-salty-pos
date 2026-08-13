@@ -204,16 +204,14 @@ export async function checkout(input: CheckoutInput) {
   }
   if (groupedLines.size === 0) throw new Error("El ticket está vacío.");
 
+  // La primera consulta o cobro posterior a las 07:00 abre automáticamente la nueva jornada.
+  // Se reutiliza el mismo mecanismo para conservar el fondo contado en el cierre anterior.
+  const activeSession = await getOrCreateCashSession();
   return database.transaction(async (tx) => {
-    const businessDate = getBusinessDate();
-    let session = await tx.select().from(cashSessions).where(eq(cashSessions.businessDate, businessDate)).limit(1);
-    if (!session[0]) {
-      await tx.insert(cashSessions).values({ businessDate, openingFloat: "0.00" });
-      session = await tx.select().from(cashSessions).where(eq(cashSessions.businessDate, businessDate)).limit(1);
-    }
+    const session = await tx.select().from(cashSessions).where(eq(cashSessions.id, activeSession.id)).limit(1);
     const cashSession = session[0];
     if (!cashSession || cashSession.status !== "open") {
-      throw new Error("La caja diaria está cerrada. Abre una nueva caja antes de cobrar.");
+      throw new Error("La caja de esta jornada ya está cerrada. La siguiente se abrirá automáticamente a las 07:00.");
     }
 
     const productIds = [...groupedLines.keys()];
@@ -256,7 +254,7 @@ export async function checkout(input: CheckoutInput) {
     const receivedAmount = input.paymentMethod === "cash" ? (input.receivedAmount ?? totalAmount) : totalAmount;
     if (receivedAmount < totalAmount) throw new Error("El importe recibido es menor que el total del ticket.");
     const changeAmount = input.paymentMethod === "cash" ? receivedAmount - totalAmount : 0;
-    const saleNumber = `SS-${businessDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
+    const saleNumber = `SS-${cashSession.businessDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
 
     const insertedSale = await tx.insert(sales).values({
       saleNumber,
@@ -379,6 +377,17 @@ export async function closeCurrentCashSession(input: { countedCash?: number; cou
       notes: input.notes?.trim() || null,
     })
     .where(eq(cashSessions.id, summary.id));
+
+  // Preparar la próxima jornada: el siguiente primer acceso encontrará la caja ya abierta.
+  const nextBusinessDate = new Date(`${summary.businessDate}T00:00:00Z`);
+  nextBusinessDate.setUTCDate(nextBusinessDate.getUTCDate() + 1);
+  const nextDate = nextBusinessDate.toISOString().slice(0, 10);
+  const nextSession = await database.select().from(cashSessions).where(eq(cashSessions.businessDate, nextDate)).limit(1);
+  if (!nextSession[0]) {
+    const insertedNext = await database.insert(cashSessions).values({ businessDate: nextDate, openingFloat: money(countedCash) });
+    const nextId = Number(insertedNext[0].insertId);
+    if (countedCash > 0) await database.insert(cashMovements).values({ cashSessionId: nextId, movementType: "float", amount: money(countedCash), note: "Fondo inicial preparado desde el cierre anterior" });
+  }
   return { ...summary, countedCash: money(countedCash), countedCard: money(countedCard), cashDifference: money(cashDifference), cardDifference: money(cardDifference), difference: money(difference), status: "closed" as const };
 }
 
@@ -451,15 +460,49 @@ export async function listAdminProducts() {
     .orderBy(asc(products.name));
 }
 
-export async function createCategory(input: { name: string; color?: string; sortOrder?: number; isFeatured?: boolean }) {
+export async function listAdminCategories() {
   const database = requireDb();
+  return database.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name));
+}
+
+export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean }) {
+  const database = requireDb();
+  const lastOrder = await database.select({ maxOrder: sql<number>`coalesce(max(${categories.sortOrder}), -1)` }).from(categories);
   const inserted = await database.insert(categories).values({
     name: input.name.trim(),
     color: input.color ?? "#155E75",
-    sortOrder: input.sortOrder ?? 0,
+    imageUrl: input.imageUrl?.trim() || null,
+    iconName: input.iconName?.trim() || "Package",
+    sortOrder: input.sortOrder ?? Number(lastOrder[0]?.maxOrder ?? -1) + 1,
     isFeatured: input.isFeatured ?? false,
   });
   return { id: Number(inserted[0].insertId) };
+}
+
+export async function updateCategory(input: { id: number; name?: string; color?: string; imageUrl?: string | null; iconName?: string; sortOrder?: number; isFeatured?: boolean; isActive?: boolean }) {
+  const database = requireDb();
+  if (input.isActive === false) {
+    const assigned = await database.select({ count: sql<number>`count(*)` }).from(products).where(and(eq(products.categoryId, input.id), eq(products.isActive, true)));
+    if (Number(assigned[0]?.count ?? 0) > 0) throw new Error("No se puede retirar una familia que todavía tiene artículos activos. Reasígnalos primero.");
+  }
+  const updateSet: Partial<typeof categories.$inferInsert> = {};
+  if (input.name !== undefined) updateSet.name = input.name.trim();
+  if (input.color !== undefined) updateSet.color = input.color;
+  if (input.imageUrl !== undefined) updateSet.imageUrl = input.imageUrl?.trim() || null;
+  if (input.iconName !== undefined) updateSet.iconName = input.iconName.trim() || "Package";
+  if (input.sortOrder !== undefined) updateSet.sortOrder = input.sortOrder;
+  if (input.isFeatured !== undefined) updateSet.isFeatured = input.isFeatured;
+  if (input.isActive !== undefined) updateSet.isActive = input.isActive;
+  if (Object.keys(updateSet).length > 0) await database.update(categories).set(updateSet).where(eq(categories.id, input.id));
+  return { success: true };
+}
+
+export async function reorderCategories(items: Array<{ id: number; sortOrder: number }>) {
+  const database = requireDb();
+  await database.transaction(async (tx) => {
+    for (const item of items) await tx.update(categories).set({ sortOrder: item.sortOrder }).where(eq(categories.id, item.id));
+  });
+  return { success: true };
 }
 
 export async function updateProduct(input: {
