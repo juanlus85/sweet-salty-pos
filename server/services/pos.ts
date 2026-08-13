@@ -240,9 +240,6 @@ export async function checkout(input: CheckoutInput) {
     const computedLines = catalogRows.map(({ product, balance }) => {
       const soldQuantity = groupedLines.get(product.id) ?? 0;
       const currentStock = toNumber(balance?.quantityOnHand);
-      if (currentStock < soldQuantity) {
-        throw new Error(`Stock insuficiente para «${product.name}». Disponible: ${currentStock}.`);
-      }
       const unitPrice = toNumber(product.salePrice);
       const vatRate = toNumber(product.vatRate);
       const lineTotal = unitPrice * soldQuantity;
