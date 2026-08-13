@@ -780,6 +780,86 @@ function formatBusinessHour(value: Date) {
   return new Intl.DateTimeFormat("es-ES", { timeZone: process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid", hour: "2-digit", minute: "2-digit", hour12: false }).format(value);
 }
 
+function shiftBusinessDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function reportRange(period: string, customFrom?: string, customTo?: string) {
+  const today = getBusinessDate();
+  if (period === "custom" && customFrom && customTo) return { from: customFrom, to: customTo };
+  if (period === "day") return { from: today, to: today };
+  if (period === "week") {
+    const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
+    const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+    const from = shiftBusinessDate(today, mondayOffset);
+    return { from, to: shiftBusinessDate(from, 6) };
+  }
+  if (period === "month") {
+    return { from: `${today.slice(0, 7)}-01`, to: today };
+  }
+  if (period === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
+  const month = Number(today.slice(5, 7));
+  const quarterStart = Math.floor((month - 1) / 3) * 3 + 1;
+  return { from: `${today.slice(0, 4)}-${String(quarterStart).padStart(2, "0")}-01`, to: today };
+}
+
+export async function getReports(input: { period?: string; from?: string; to?: string } = {}) {
+  const database = requireDb();
+  const period = input.period ?? "quarter";
+  const range = reportRange(period, input.from, input.to);
+  const salesRows = await database
+    .select({ id: sales.id, businessDate: cashSessions.businessDate, totalAmount: sales.totalAmount, subtotal: sales.subtotal, vatAmount: sales.vatAmount, createdAt: sales.createdAt, method: payments.method })
+    .from(sales)
+    .innerJoin(cashSessions, eq(cashSessions.id, sales.cashSessionId))
+    .leftJoin(payments, eq(payments.saleId, sales.id))
+    .where(and(eq(sales.status, "completed"), sql`${cashSessions.businessDate} >= ${range.from}`, sql`${cashSessions.businessDate} <= ${range.to}`))
+    .orderBy(asc(cashSessions.businessDate), asc(sales.createdAt));
+  const lineRows = await database
+    .select({ productId: saleLines.productId, productName: saleLines.productName, quantity: saleLines.quantity, lineTotal: saleLines.lineTotal, lineVat: saleLines.lineVat, unitCost: saleLines.unitCost, businessDate: cashSessions.businessDate, categoryName: categories.name })
+    .from(saleLines)
+    .innerJoin(sales, eq(sales.id, saleLines.saleId))
+    .innerJoin(cashSessions, eq(cashSessions.id, sales.cashSessionId))
+    .leftJoin(products, eq(products.id, saleLines.productId))
+    .leftJoin(categories, eq(categories.id, products.categoryId))
+    .where(and(eq(sales.status, "completed"), sql`${cashSessions.businessDate} >= ${range.from}`, sql`${cashSessions.businessDate} <= ${range.to}`));
+
+  const totalSold = salesRows.reduce((sum, row) => sum + toNumber(row.totalAmount), 0);
+  const subtotal = salesRows.reduce((sum, row) => sum + toNumber(row.subtotal), 0);
+  const vat = salesRows.reduce((sum, row) => sum + toNumber(row.vatAmount), 0);
+  const cash = salesRows.filter((row) => row.method === "cash").reduce((sum, row) => sum + toNumber(row.totalAmount), 0);
+  const card = salesRows.filter((row) => row.method === "card").reduce((sum, row) => sum + toNumber(row.totalAmount), 0);
+  const totalCost = lineRows.reduce((sum, row) => sum + toNumber(row.unitCost) * toNumber(row.quantity), 0);
+  const groupKey = (date: string) => period === "day" || period === "week" || period === "custom" ? date : date.slice(0, 7);
+  const seriesMap = new Map<string, { total: number; tickets: number; cash: number; card: number }>();
+  for (const row of salesRows) {
+    const key = groupKey(row.businessDate);
+    const current = seriesMap.get(key) ?? { total: 0, tickets: 0, cash: 0, card: 0 };
+    current.total += toNumber(row.totalAmount); current.tickets += 1;
+    if (row.method === "cash") current.cash += toNumber(row.totalAmount);
+    if (row.method === "card") current.card += toNumber(row.totalAmount);
+    seriesMap.set(key, current);
+  }
+  const aggregateLines = (keyOf: (row: typeof lineRows[number]) => string) => {
+    const map = new Map<string, { key: string; units: number; revenue: number; cost: number; vat: number }>();
+    for (const row of lineRows) {
+      const key = keyOf(row); const current = map.get(key) ?? { key, units: 0, revenue: 0, cost: 0, vat: 0 };
+      current.units += toNumber(row.quantity); current.revenue += toNumber(row.lineTotal); current.cost += toNumber(row.unitCost) * toNumber(row.quantity); current.vat += toNumber(row.lineVat); map.set(key, current);
+    }
+    return [...map.values()].sort((a, b) => b.revenue - a.revenue);
+  };
+  const topProducts = aggregateLines((row) => `${row.productId ?? "none"}::${row.productName}`).slice(0, 20).map((row) => ({ productId: row.key.split("::")[0] === "none" ? null : Number(row.key.split("::")[0]), productName: row.key.split("::").slice(1).join("::"), units: row.units.toFixed(3), revenue: money(row.revenue), cost: money(row.cost), margin: money(row.revenue - row.cost) }));
+  const byFamily = aggregateLines((row) => row.categoryName ?? "Sin familia").map((row) => ({ family: row.key, units: row.units.toFixed(3), revenue: money(row.revenue), cost: money(row.cost), margin: money(row.revenue - row.cost) }));
+  const vatBreakdown = aggregateLines((row) => String(row.lineVat ?? "0")).map((row) => ({ vat: row.key, revenue: money(row.revenue), vatAmount: money(row.vat), units: row.units.toFixed(3) }));
+  return {
+    period, from: range.from, to: range.to,
+    totals: { totalSold: money(totalSold), subtotal: money(subtotal), vat: money(vat), cash: money(cash), card: money(card), cost: money(totalCost), margin: money(totalSold - totalCost), tickets: salesRows.length },
+    series: [...seriesMap.entries()].map(([label, row]) => ({ label, ...row, total: money(row.total), cash: money(row.cash), card: money(row.card) })),
+    topProducts, byFamily, vatBreakdown,
+  };
+}
+
 export async function getDailyAnalysis() {
   const database = requireDb();
   const session = await getOrCreateCashSession();

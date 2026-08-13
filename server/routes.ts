@@ -8,6 +8,7 @@ import {
   getFeaturedProducts,
   getRecentSales,
   getDailyAnalysis,
+  getReports,
   getSaleDetails,
   listVatTypes,
   listCatalog,
@@ -116,6 +117,17 @@ apiRouter.get("/sales", async (req, res, next) => {
 apiRouter.get("/admin/analysis/daily", async (_req, res, next) => {
   try {
     res.json(await getDailyAnalysis());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/reports", async (req, res, next) => {
+  try {
+    const period = typeof req.query.period === "string" ? req.query.period : "quarter";
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    res.json(await getReports({ period, from, to }));
   } catch (error) {
     next(error);
   }

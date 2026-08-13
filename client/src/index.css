@@ -154,3 +154,24 @@ button:disabled { cursor: not-allowed; }
 @media (max-width: 760px) {
   .pos-home-button { min-width: 96px; min-height: 46px; font-size: 14px; }
 }
+
+/* Informes históricos */
+.report-filters { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.report-filter-group { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.report-filter-group label { display: grid; gap: 6px; color: #648069; font-size: 10px; font-weight: 800; }
+.report-filter-group select, .report-filter-group input { min-width: 150px; min-height: 36px; padding: 0 10px; border: 1px solid #dbe6db; border-radius: 8px; outline: none; color: #2b4933; background: #fff; font-size: 12px; }
+.report-filter-group select:focus, .report-filter-group input:focus { border-color: #82ae88; box-shadow: 0 0 0 3px rgba(81,141,90,.09); }
+.report-period-label { color: #829286; font-family: "DM Mono",monospace; font-size: 10px; white-space: nowrap; }
+.report-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); margin-bottom: 16px; }
+.report-chart-card { margin-bottom: 16px; }
+.report-bars { min-height: 265px; display: grid; grid-template-columns: repeat(auto-fit,minmax(44px,1fr)); align-items: end; gap: 10px; padding: 22px 8px 0; overflow-x: auto; }
+.report-bar-column { min-width: 44px; height: 225px; display: grid; grid-template-rows: 24px 1fr 20px 17px; align-items: end; justify-items: center; gap: 4px; }
+.report-bar-column strong { overflow: hidden; max-width: 100%; color: #5c735f; font-family: "DM Mono",monospace; font-size: 8px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.report-bar-track { width: 100%; height: 100%; display: flex; align-items: end; border-bottom: 1px solid #dce6dc; background: repeating-linear-gradient(to top, transparent 0, transparent 47px, #edf2ed 48px); }
+.report-bar-fill { width: 65%; min-height: 5px; margin: 0 auto; border-radius: 5px 5px 0 0; background: linear-gradient(180deg,#65b46b,#3d8f51); }
+.report-bar-column small { overflow: hidden; max-width: 100%; color: #718274; font-family: "DM Mono",monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.report-bar-column span { color: #a0aca1; font-size: 8px; white-space: nowrap; }
+.report-columns { align-items: start; margin-top: 0; margin-bottom: 16px; }
+.report-table td, .report-table th { padding-left: 7px; padding-right: 7px; }
+@media (max-width:1100px) { .report-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (max-width:760px) { .report-filters { display: block; }.report-filter-group { align-items: stretch; }.report-filter-group label { flex: 1; min-width: 130px; }.report-filter-group select, .report-filter-group input { width: 100%; }.report-period-label { display: block; margin-top: 12px; }.report-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }.report-bars { grid-template-columns: repeat(auto-fit,minmax(36px,1fr)); gap: 5px; padding-left: 0; padding-right: 0; }.report-bar-column { min-width: 36px; }.report-bar-column strong { font-size: 7px; }.report-columns { display: block; }.report-columns > .admin-card + .admin-card { margin-top: 14px; } }
