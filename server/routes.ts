@@ -7,6 +7,8 @@ import {
   getCurrentCashSummary,
   getFeaturedProducts,
   getRecentSales,
+  getDailyAnalysis,
+  getSaleDetails,
   listCatalog,
   listCategories,
 } from "./services/pos";
@@ -19,6 +21,8 @@ const checkoutSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
+const mediaPathSchema = z.string().max(2000).refine((value) => value.startsWith("/") || /^https?:\/\//i.test(value), "La imagen debe ser una ruta local o una URL HTTP válida.");
+
 const createProductSchema = z.object({
   categoryId: z.number().int().positive(),
   name: z.string().trim().min(1).max(255),
@@ -27,7 +31,8 @@ const createProductSchema = z.object({
   initialStock: z.number().min(0).optional(),
   minimumStock: z.number().min(0).optional(),
   sku: z.string().trim().max(100).optional(),
-  imageUrl: z.string().url().max(2000).optional(),
+  barcode: z.string().trim().max(100).optional(),
+  imageUrl: mediaPathSchema.optional(),
   primarySupplierId: z.number().int().positive().optional(),
 });
 
@@ -89,10 +94,26 @@ apiRouter.post("/checkout", async (req, res, next) => {
   }
 });
 
+apiRouter.get("/sales/:id", async (req, res, next) => {
+  try {
+    res.json(await getSaleDetails(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/sales", async (req, res, next) => {
   try {
     const requestedLimit = req.query.limit ? Number(req.query.limit) : 20;
     res.json(await getRecentSales(Number.isFinite(requestedLimit) ? requestedLimit : 20));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/analysis/daily", async (_req, res, next) => {
+  try {
+    res.json(await getDailyAnalysis());
   } catch (error) {
     next(error);
   }
@@ -108,8 +129,8 @@ apiRouter.get("/cash/current", async (_req, res, next) => {
 
 apiRouter.post("/cash/close", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ countedCash: z.number().nonnegative(), notes: z.string().max(1000).optional() }), req.body);
-    res.json(await closeCurrentCashSession(input.countedCash, input.notes));
+    const input = parseBody(z.object({ countedCash: z.number().nonnegative().optional(), countedCard: z.number().nonnegative().optional(), denominationCounts: z.record(z.string(), z.number().nonnegative()).optional(), notes: z.string().max(1000).optional() }), req.body);
+    res.json(await closeCurrentCashSession(input));
   } catch (error) {
     next(error);
   }
@@ -144,8 +165,12 @@ apiRouter.patch("/admin/products/:id", async (req, res, next) => {
       minimumStock: z.number().min(0).optional(),
       isFeatured: z.boolean().optional(),
       isActive: z.boolean().optional(),
-      imageUrl: z.string().url().max(2000).nullable().optional(),
+      imageUrl: mediaPathSchema.nullable().optional(),
       sku: z.string().trim().max(100).nullable().optional(),
+      barcode: z.string().trim().max(100).nullable().optional(),
+      vatRate: z.number().min(0).max(100).optional(),
+      lastPurchaseCost: z.number().nonnegative().optional(),
+      weightedAverageCost: z.number().nonnegative().optional(),
     }), req.body);
     const { updateProduct } = await import("./services/pos");
     res.json(await updateProduct({ id: Number(req.params.id), ...input }));
@@ -212,7 +237,7 @@ apiRouter.post("/admin/purchase-invoices", async (req, res, next) => {
       subtotal: z.number().nonnegative().optional(),
       vatAmount: z.number().nonnegative().optional(),
       totalAmount: z.number().nonnegative().optional(),
-      documentUrl: z.string().url().optional(),
+      documentUrl: mediaPathSchema.optional(),
       documentName: z.string().max(255).optional(),
       ocrData: z.unknown().optional(),
       lines: z.array(z.object({ productId: z.number().int().positive().optional(), detectedName: z.string().max(255).optional(), supplierReference: z.string().max(100).optional(), quantity: z.number().positive(), unitCost: z.number().nonnegative(), vatRate: z.number().min(0).max(100).optional(), lineTotal: z.number().nonnegative() })).min(1),
@@ -278,6 +303,45 @@ apiRouter.post("/admin/product-images", async (req, res, next) => {
     const input = parseBody(z.object({ fileData: z.string().min(20), fileName: z.string().min(1).max(255), contentType: z.string() }), req.body);
     const { saveProductImage } = await import("./services/uploads");
     res.status(201).json(await saveProductImage(input));
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+apiRouter.post("/admin/invoice-documents", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ fileData: z.string().min(20), fileName: z.string().min(1).max(255), contentType: z.string() }), req.body);
+    const { saveInvoiceDocument } = await import("./services/uploads");
+    res.status(201).json(await saveInvoiceDocument(input));
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+apiRouter.delete("/admin/products/:id", async (req, res, next) => {
+  try {
+    const { deactivateProduct } = await import("./services/pos");
+    res.json(await deactivateProduct(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.delete("/admin/suppliers/:id", async (req, res, next) => {
+  try {
+    const { deactivateSupplier } = await import("./services/pos");
+    res.json(await deactivateSupplier(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/purchase-invoices/:id/void", async (req, res, next) => {
+  try {
+    const { voidPurchaseInvoice } = await import("./services/pos");
+    res.json(await voidPurchaseInvoice(Number(req.params.id)));
   } catch (error) {
     next(error);
   }

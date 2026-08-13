@@ -19,15 +19,14 @@ const toNumber = (value: string | number | null | undefined) => Number(value ?? 
 const money = (value: number) => value.toFixed(2);
 const quantity = (value: number) => value.toFixed(3);
 
-export function getBusinessDate() {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: process.env.BUSINESS_TIMEZONE ?? "Atlantic/Canary",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const values = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+export function getBusinessDate(now = new Date()) {
+  const timezone = process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid";
+  const localParts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now).map((part) => [part.type, part.value]));
+  const localHour = Number(localParts.hour);
+  const localClockAsUtc = Date.UTC(Number(localParts.year), Number(localParts.month) - 1, Number(localParts.day), localHour, Number(localParts.minute));
+  const businessInstant = new Date(localClockAsUtc - 7 * 60 * 60 * 1000);
+  const businessParts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(businessInstant).map((part) => [part.type, part.value]));
+  return `${businessParts.year}-${businessParts.month}-${businessParts.day}`;
 }
 
 export async function listCategories() {
@@ -102,6 +101,7 @@ export async function createProduct(input: {
   initialStock?: number;
   minimumStock?: number;
   sku?: string;
+  barcode?: string;
   imageUrl?: string;
   primarySupplierId?: number;
 }) {
@@ -115,6 +115,7 @@ export async function createProduct(input: {
       vatRate: money(input.vatRate ?? 7),
       minimumStock: quantity(input.minimumStock ?? 0),
       sku: input.sku?.trim() || null,
+      barcode: input.barcode?.trim() || null,
       imageUrl: input.imageUrl?.trim() || null,
       primarySupplierId: input.primarySupplierId ?? null,
     });
@@ -333,27 +334,41 @@ export async function getCurrentCashSummary() {
     .select({ total: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` })
     .from(cashMovements)
     .where(and(eq(cashMovements.cashSessionId, session.id), sql`${cashMovements.movementType} <> 'float'`));
+  const soldResult = await database
+    .select({ totalSold: sql<string>`coalesce(sum(${sales.totalAmount}), 0)` })
+    .from(sales)
+    .where(and(eq(sales.cashSessionId, session.id), eq(sales.status, "completed")));
   const expectedCash = toNumber(session.openingFloat) + toNumber(result[0]?.total);
-  return { ...session, expectedCash: money(expectedCash) };
+  return { ...session, expectedCash: money(expectedCash), totalSold: money(toNumber(soldResult[0]?.totalSold)), businessTimezone: process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid", businessDayStartsAt: "07:00" };
 }
 
-export async function closeCurrentCashSession(countedCash: number, notes?: string) {
+const CASH_DENOMINATIONS = [0.10, 0.20, 0.50, 1, 2, 5, 10, 20, 50] as const;
+
+export async function closeCurrentCashSession(input: { countedCash?: number; countedCard?: number; denominationCounts?: Record<string, number>; notes?: string }) {
   const database = requireDb();
   const summary = await getCurrentCashSummary();
   if (summary.status !== "open") throw new Error("La caja de hoy ya está cerrada.");
-  const difference = countedCash - toNumber(summary.expectedCash);
+  const counts = input.denominationCounts ?? {};
+  const hasDenominations = Object.keys(counts).length > 0;
+  const countedCash = hasDenominations ? CASH_DENOMINATIONS.reduce((sum, denomination) => sum + denomination * Math.max(0, Number(counts[denomination.toFixed(2)] ?? 0)), 0) : Math.max(0, input.countedCash ?? 0);
+  const countedCard = Math.max(0, input.countedCard ?? toNumber(summary.cardTotal));
+  const cashDifference = countedCash - toNumber(summary.expectedCash);
+  const cardDifference = countedCard - toNumber(summary.cardTotal);
+  const difference = cashDifference + cardDifference;
   await database
     .update(cashSessions)
     .set({
       countedCash: money(countedCash),
+      countedCard: money(countedCard),
+      denominationCounts: hasDenominations ? counts : null,
       expectedCash: summary.expectedCash,
       difference: money(difference),
       status: "closed",
       closedAt: new Date(),
-      notes: notes?.trim() || null,
+      notes: input.notes?.trim() || null,
     })
     .where(eq(cashSessions.id, summary.id));
-  return { ...summary, countedCash: money(countedCash), difference: money(difference), status: "closed" as const };
+  return { ...summary, countedCash: money(countedCash), countedCard: money(countedCard), cashDifference: money(cashDifference), cardDifference: money(cardDifference), difference: money(difference), status: "closed" as const };
 }
 
 export async function getRecentSales(limit = 20) {
@@ -423,6 +438,10 @@ export async function updateProduct(input: {
   isActive?: boolean;
   imageUrl?: string | null;
   sku?: string | null;
+  barcode?: string | null;
+  vatRate?: number;
+  lastPurchaseCost?: number;
+  weightedAverageCost?: number;
 }) {
   const database = requireDb();
   const updateSet: Record<string, unknown> = {};
@@ -434,6 +453,10 @@ export async function updateProduct(input: {
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
   if (input.imageUrl !== undefined) updateSet.imageUrl = input.imageUrl?.trim() || null;
   if (input.sku !== undefined) updateSet.sku = input.sku?.trim() || null;
+  if (input.barcode !== undefined) updateSet.barcode = input.barcode?.trim() || null;
+  if (input.vatRate !== undefined) updateSet.vatRate = money(input.vatRate);
+  if (input.lastPurchaseCost !== undefined) updateSet.lastPurchaseCost = money(input.lastPurchaseCost);
+  if (input.weightedAverageCost !== undefined) updateSet.weightedAverageCost = money(input.weightedAverageCost);
   if (Object.keys(updateSet).length > 0) await database.update(products).set(updateSet).where(eq(products.id, input.id));
   return { success: true };
 }
@@ -618,4 +641,90 @@ export async function receivePurchaseInvoice(invoiceId: number, lineMappings?: A
     await tx.update(purchaseInvoices).set({ status: "received", ocrStatus: "reviewed" }).where(eq(purchaseInvoices.id, invoiceId));
     return { id: invoiceId, status: "received" as const };
   });
+}
+
+
+function formatBusinessHour(value: Date) {
+  return new Intl.DateTimeFormat("es-ES", { timeZone: process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid", hour: "2-digit", minute: "2-digit", hour12: false }).format(value);
+}
+
+export async function getDailyAnalysis() {
+  const database = requireDb();
+  const session = await getOrCreateCashSession();
+  const saleRows = await database
+    .select({ id: sales.id, totalAmount: sales.totalAmount, createdAt: sales.createdAt, method: payments.method })
+    .from(sales)
+    .leftJoin(payments, eq(payments.saleId, sales.id))
+    .where(and(eq(sales.cashSessionId, session.id), eq(sales.status, "completed")))
+    .orderBy(asc(sales.createdAt));
+  const lineRows = await database
+    .select({ productId: saleLines.productId, productName: saleLines.productName, units: saleLines.quantity, revenue: saleLines.lineTotal })
+    .from(saleLines)
+    .innerJoin(sales, eq(sales.id, saleLines.saleId))
+    .where(and(eq(sales.cashSessionId, session.id), eq(sales.status, "completed")));
+
+  const hourly = new Map<number, { total: number; tickets: number; cash: number; card: number }>();
+  for (let index = 0; index < 24; index += 1) hourly.set(index, { total: 0, tickets: 0, cash: 0, card: 0 });
+  for (const sale of saleRows) {
+    const localHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid", hour: "2-digit", hour12: false }).format(sale.createdAt));
+    const bucket = hourly.get(localHour) ?? { total: 0, tickets: 0, cash: 0, card: 0 };
+    bucket.total += toNumber(sale.totalAmount);
+    bucket.tickets += 1;
+    if (sale.method === "cash") bucket.cash += toNumber(sale.totalAmount);
+    if (sale.method === "card") bucket.card += toNumber(sale.totalAmount);
+    hourly.set(localHour, bucket);
+  }
+  const topProducts = new Map<number, { productId: number | null; productName: string; units: number; revenue: number }>();
+  for (const line of lineRows) {
+    const key = line.productId ?? -line.productName.length;
+    const current = topProducts.get(key) ?? { productId: line.productId, productName: line.productName, units: 0, revenue: 0 };
+    current.units += toNumber(line.units);
+    current.revenue += toNumber(line.revenue);
+    topProducts.set(key, current);
+  }
+  const totalSold = saleRows.reduce((sum, sale) => sum + toNumber(sale.totalAmount), 0);
+  const cashSold = saleRows.filter((sale) => sale.method === "cash").reduce((sum, sale) => sum + toNumber(sale.totalAmount), 0);
+  const cardSold = saleRows.filter((sale) => sale.method === "card").reduce((sum, sale) => sum + toNumber(sale.totalAmount), 0);
+  return {
+    businessDate: session.businessDate,
+    sessionId: session.id,
+    status: session.status,
+    totalSold: money(totalSold),
+    cashSold: money(cashSold),
+    cardSold: money(cardSold),
+    expectedCash: money(toNumber(session.openingFloat) + cashSold),
+    tickets: saleRows.length,
+    hourly: [...hourly.entries()].map(([hour, values]) => ({ hour, label: `${String(hour).padStart(2, "0")}:00`, ...values, total: money(values.total), cash: money(values.cash), card: money(values.card) })),
+    topProducts: [...topProducts.values()].sort((a, b) => b.units - a.units).slice(0, 10).map((product) => ({ ...product, units: product.units.toFixed(3), revenue: money(product.revenue) })),
+  };
+}
+
+export async function getSaleDetails(saleId: number) {
+  const database = requireDb();
+  const sale = await database.select({ sale: sales, payment: payments }).from(sales).leftJoin(payments, eq(payments.saleId, sales.id)).where(eq(sales.id, saleId)).limit(1);
+  if (!sale[0]) throw new Error("No se encontró el ticket.");
+  const lines = await database.select().from(saleLines).where(eq(saleLines.saleId, saleId)).orderBy(asc(saleLines.id));
+  return { ...sale[0].sale, payment: sale[0].payment, lines };
+}
+
+
+export async function deactivateProduct(productId: number) {
+  const database = requireDb();
+  await database.update(products).set({ isActive: false }).where(eq(products.id, productId));
+  return { success: true, id: productId };
+}
+
+export async function deactivateSupplier(supplierId: number) {
+  const database = requireDb();
+  await database.update(suppliers).set({ isActive: false }).where(eq(suppliers.id, supplierId));
+  return { success: true, id: supplierId };
+}
+
+export async function voidPurchaseInvoice(invoiceId: number) {
+  const database = requireDb();
+  const invoice = await database.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, invoiceId)).limit(1);
+  if (!invoice[0]) throw new Error("No se encontró la factura.");
+  if (invoice[0].status !== "draft") throw new Error("Solo se pueden anular facturas que aún no han sido recibidas.");
+  await database.update(purchaseInvoices).set({ status: "void" }).where(eq(purchaseInvoices.id, invoiceId));
+  return { success: true, id: invoiceId, status: "void" as const };
 }

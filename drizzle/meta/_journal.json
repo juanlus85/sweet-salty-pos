@@ -15,6 +15,13 @@
       "when": 1786639130126,
       "tag": "0001_free_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786641730152,
+      "tag": "0002_hesitant_omega_flight",
+      "breakpoints": true
     }
   ]
 }
