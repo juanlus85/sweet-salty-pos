@@ -510,6 +510,13 @@ export async function listAdminCategories() {
   return database.select().from(categories).where(eq(categories.isActive, true)).orderBy(asc(categories.sortOrder), asc(categories.name));
 }
 
+function rethrowSmtpSchemaError(error: unknown): never {
+  if (error instanceof Error && /Unknown column.*smtp_(host|port|secure|user|password|from)/i.test(error.message)) {
+    throw new Error("La base de datos aún no tiene la migración SMTP 0009. Ejecuta deploy/0009_smtp_idempotent.sql en la base de datos de producción y reinicia la aplicación.");
+  }
+  throw error;
+}
+
 export type SmtpConfig = {
   host: string | null;
   port: number;
@@ -522,7 +529,12 @@ export type SmtpConfig = {
 
 export async function getSmtpConfig(): Promise<SmtpConfig> {
   const database = requireDb();
-  const rows = await database.select().from(posSettings).limit(1);
+  let rows;
+  try {
+    rows = await database.select().from(posSettings).limit(1);
+  } catch (error) {
+    rethrowSmtpSchemaError(error);
+  }
   const stored = rows[0];
   const hasStoredConfig = Boolean(stored?.smtpHost || stored?.smtpUser || stored?.smtpPassword || stored?.smtpFrom);
   if (hasStoredConfig) {
@@ -552,7 +564,12 @@ export async function getSmtpConfig(): Promise<SmtpConfig> {
 
 export async function getPosSettings() {
   const database = requireDb();
-  const rows = await database.select().from(posSettings).limit(1);
+  let rows;
+  try {
+    rows = await database.select().from(posSettings).limit(1);
+  } catch (error) {
+    rethrowSmtpSchemaError(error);
+  }
   const settings = rows[0];
   const smtp = await getSmtpConfig();
   return {
@@ -573,7 +590,12 @@ export async function getPosSettings() {
 
 export async function updateSmtpSettings(input: { smtpHost?: string | null; smtpPort?: number; smtpSecure?: boolean; smtpUser?: string | null; smtpPassword?: string; clearPassword?: boolean; smtpFrom?: string | null }) {
   const database = requireDb();
-  const current = await database.select().from(posSettings).limit(1);
+  let current;
+  try {
+    current = await database.select().from(posSettings).limit(1);
+  } catch (error) {
+    rethrowSmtpSchemaError(error);
+  }
   const values: Partial<typeof posSettings.$inferInsert> = {};
   if (input.smtpHost !== undefined) values.smtpHost = input.smtpHost?.trim() || null;
   if (input.smtpPort !== undefined) values.smtpPort = input.smtpPort;
