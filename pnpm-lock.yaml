@@ -56,6 +56,9 @@ importers:
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      nodemailer:
+        specifier: ^9.0.5
+        version: 9.0.5
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -90,6 +93,9 @@ importers:
       '@types/node':
         specifier: ^24.7.0
         version: 24.7.0
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
@@ -1256,6 +1262,9 @@ packages:
   '@types/node@24.7.0':
     resolution: {integrity: sha512-IbKooQVqUBrlzWTi79E8Fw78l8k1RNtlDDNWsFZs7XonuQSJ8oNYfEeclhprUldXISRMLzBpILuKgPlIxm+/Yw==}
 
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
+
   '@types/qrcode@1.5.6':
     resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
 
@@ -1948,6 +1957,10 @@ packages:
 
   node-releases@2.0.23:
     resolution: {integrity: sha512-cCmFDMSm26S6tQSDpBCg/NR8NENrVPhAJSf+XbxBG4rPFaaonlEoE9wHQmun+cls499TQGSb7ZyPBRlzgKfpeg==}
+
+  nodemailer@9.0.5:
+    resolution: {integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==}
+    engines: {node: '>=6.0.0'}
 
   object-inspect@1.13.4:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
@@ -3321,6 +3334,10 @@ snapshots:
     dependencies:
       undici-types: 7.14.0
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 24.7.0
+
   '@types/qrcode@1.5.6':
     dependencies:
       '@types/node': 24.7.0
@@ -3952,6 +3969,8 @@ snapshots:
       react-dom: 19.2.1(react@19.2.1)
 
   node-releases@2.0.23: {}
+
+  nodemailer@9.0.5: {}
 
   object-inspect@1.13.4: {}
 

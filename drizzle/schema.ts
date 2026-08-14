@@ -108,6 +108,24 @@ export const fiscalRecords = mysqlTable("pos_fiscal_records", {
   index("pos_fiscal_records_submission_index").on(table.submissionStatus, table.generatedAt),
 ]);
 
+export const fiscalSubmissions = mysqlTable("pos_fiscal_submissions", {
+  id: int("id").autoincrement().primaryKey(),
+  fiscalRecordId: int("fiscal_record_id").notNull(),
+  environment: mysqlEnum("environment", ["sandbox", "production"]).notNull().default("sandbox"),
+  status: mysqlEnum("status", ["blocked", "pending", "sending", "accepted", "rejected", "error"]).notNull().default("blocked"),
+  attemptCount: int("attempt_count").notNull().default(0),
+  requestPayload: json("request_payload"),
+  responsePayload: json("response_payload"),
+  lastError: text("last_error"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  nextRetryAt: timestamp("next_retry_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("pos_fiscal_submissions_record_index").on(table.fiscalRecordId, table.status),
+  index("pos_fiscal_submissions_retry_index").on(table.status, table.nextRetryAt),
+]);
+
 export const vatTypes = mysqlTable("pos_vat_types", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),

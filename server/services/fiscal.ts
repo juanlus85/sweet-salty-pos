@@ -5,6 +5,7 @@ import {
   fiscalProfiles,
   fiscalRecords,
   fiscalSeries,
+  fiscalSubmissions,
   auditLog,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
@@ -165,7 +166,7 @@ export async function issueFiscalTestRecord(tx: any, input: FiscalIssueInput) {
   const recordHash = sha256(canonicalJson);
   const qrPayload = `SS-VERIFACTU-TEST|${profile.taxId}|${invoiceNumber}|${date}|${toMoney(input.totalAmount)}|${recordHash}`;
 
-  await tx.insert(fiscalRecords).values({
+  const fiscalRecordInserted = await tx.insert(fiscalRecords).values({
     fiscalInvoiceId,
     recordType: "high",
     chainPosition,
@@ -176,6 +177,14 @@ export async function issueFiscalTestRecord(tx: any, input: FiscalIssueInput) {
     qrPayload,
     submissionStatus: "sandbox_pending",
     submissionMessage: "Registro generado en modo de preparación. Sin remisión a AEAT.",
+  });
+  const fiscalRecordId = Number(fiscalRecordInserted[0].insertId);
+  await tx.insert(fiscalSubmissions).values({
+    fiscalRecordId,
+    environment: "sandbox",
+    status: "blocked",
+    requestPayload: { recordHash, invoiceNumber, blockedReason: "AEAT_SUBMISSION_ENABLED=false" },
+    lastError: "Remisión AEAT desactivada deliberadamente en modo de preparación.",
   });
 
   await tx.insert(auditLog).values({
@@ -278,7 +287,7 @@ async function appendCorrectionRecord(input: { fiscalInvoiceId: number; recordTy
   };
   const recordHash = sha256(canonicalStringify(canonicalPayload));
   const qrPayload = `SS-VERIFACTU-TEST|${input.recordType === "cancellation" ? "ANULACION" : "RECTIFICACION"}|${original[0].invoiceNumber}|${issuedAt.toISOString().slice(0, 10)}|${recordHash}`;
-  await database.insert(fiscalRecords).values({
+  const correctionRecordInserted = await database.insert(fiscalRecords).values({
     fiscalInvoiceId: input.fiscalInvoiceId,
     recordType: input.recordType,
     chainPosition,
@@ -290,6 +299,13 @@ async function appendCorrectionRecord(input: { fiscalInvoiceId: number; recordTy
     submissionStatus: "sandbox_pending",
     submissionMessage: "Registro de preparación. No se ha remitido a AEAT.",
     generatedAt: issuedAt,
+  });
+  await database.insert(fiscalSubmissions).values({
+    fiscalRecordId: Number(correctionRecordInserted[0].insertId),
+    environment: "sandbox",
+    status: "blocked",
+    requestPayload: { recordHash, originalInvoiceNumber: original[0].invoiceNumber, recordType: input.recordType, blockedReason: "AEAT_SUBMISSION_ENABLED=false" },
+    lastError: "Remisión AEAT desactivada deliberadamente en modo de preparación.",
   });
   await database.insert(auditLog).values({
     entityType: "fiscal_invoice",

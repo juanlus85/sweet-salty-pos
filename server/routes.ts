@@ -116,6 +116,25 @@ apiRouter.get("/sales", async (req, res, next) => {
   }
 });
 
+apiRouter.get("/email/status", async (_req, res, next) => {
+  try {
+    const { getReceiptEmailStatus } = await import("./services/email");
+    res.json(getReceiptEmailStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/sales/:id/email", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ recipient: z.string().email() }), req.body);
+    const { sendSaleReceiptEmail } = await import("./services/email");
+    res.json(await sendSaleReceiptEmail({ saleId: Number(req.params.id), recipient: input.recipient }));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/admin/analysis/daily", async (_req, res, next) => {
   try {
     res.json(await getDailyAnalysis());

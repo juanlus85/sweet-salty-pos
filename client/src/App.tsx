@@ -16,6 +16,7 @@ import {
   GripVertical,
   ImagePlus,
   LayoutGrid,
+  Mail,
   Menu,
   Minus,
   MoreVertical,
@@ -71,7 +72,7 @@ type Product = {
 };
 type CartLine = Product & { quantity: number };
 
-type CheckoutResult = { saleNumber: string; totalAmount: string; changeAmount: string; paymentMethod: "cash" | "card" };
+type CheckoutResult = { saleId: number; saleNumber: string; totalAmount: string; changeAmount: string; paymentMethod: "cash" | "card" };
 
 const categoryIcons: Record<string, typeof Coffee> = {
   Coffee,
@@ -137,6 +138,7 @@ function PosScreen() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [isPaying, setIsPaying] = useState(false);
   const [ticketMenuOpen, setTicketMenuOpen] = useState(false);
+  const [completedSale, setCompletedSale] = useState<CheckoutResult | null>(null);
 
   const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/categories") });
   const catalogQuery = useQuery({
@@ -155,8 +157,9 @@ function PosScreen() {
       }),
     }),
     onSuccess: (result) => {
-      setCart([]);
-      setIsPaying(false);
+       setCart([]);
+       setIsPaying(false);
+       setCompletedSale(result);
       toast.success(`Venta ${result.saleNumber} guardada`, { description: result.changeAmount !== "0.00" ? `Cambio: ${euro.format(Number(result.changeAmount))}` : `${euro.format(Number(result.totalAmount))} · ${result.paymentMethod === "card" ? "Tarjeta" : "Efectivo"}` });
       queryClient.invalidateQueries({ queryKey: ["catalog"] });
       queryClient.invalidateQueries({ queryKey: ["featured"] });
@@ -245,8 +248,22 @@ function PosScreen() {
         <footer className="ticket-footer"><div className="ticket-summary"><div><span>Subtotal</span><strong>{euro.format(cartTotal)}</strong></div><div><span>IVA incluido</span><strong>{euro.format(cart.reduce((sum, line) => { const rate = Number(line.vatRate); return sum + (Number(line.salePrice) * line.quantity * rate) / (100 + rate); }, 0))}</strong></div><div className="ticket-total"><span>Total</span><strong>{euro.format(cartTotal)}</strong></div></div><div className="ticket-footer__actions"><button className="save-ticket-button" disabled={!cart.length} onClick={() => toast.message("Los tickets abiertos se incorporarán en una fase posterior")}>Guardar</button><button className="charge-button" disabled={!cart.length || checkoutMutation.isPending} onClick={() => setIsPaying(true)}>{checkoutMutation.isPending ? "Procesando…" : <><CreditCard size={20} /> Cobrar {cart.length ? euro.format(cartTotal) : ""}</>}</button></div><div className="ticket-footnote"><Barcode size={14} /> Escanea un código o usa la búsqueda</div></footer>
       </aside>
       {isPaying && <CheckoutDialog cart={cart} total={cartTotal} onClose={() => !checkoutMutation.isPending && setIsPaying(false)} onComplete={(method, tendered, reference) => checkoutMutation.mutate({ method, tendered, reference })} />}
+      {completedSale && <PostSaleActions result={completedSale} onClose={() => setCompletedSale(null)} />}
     </main>
   );
+}
+
+function PostSaleActions({ result, onClose }: { result: CheckoutResult; onClose: () => void }) {
+  const [recipient, setRecipient] = useState("");
+  const detailsQuery = useQuery({ queryKey: ["completed-sale", result.saleId], queryFn: () => api<SaleDetails>(`/sales/${result.saleId}`) });
+  const emailStatusQuery = useQuery({ queryKey: ["email-status"], queryFn: () => api<{ configured: boolean; message: string }>("/email/status") });
+  const emailMutation = useMutation({
+    mutationFn: () => api<{ success: boolean }>(`/sales/${result.saleId}/email`, { method: "POST", body: JSON.stringify({ recipient: recipient.trim() }) }),
+    onSuccess: () => { toast.success("Ticket enviado por correo", { description: recipient.trim() }); },
+    onError: (error) => toast.error("No se ha podido enviar el ticket", { description: error.message }),
+  });
+  const emailReady = emailStatusQuery.data?.configured === true;
+  return <div className="modal-backdrop post-sale-backdrop"><section className="post-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="post-sale-title"><div className="dialog-header"><div><span className="eyebrow">VENTA COMPLETADA</span><h2 id="post-sale-title">{result.saleNumber}</h2><p className="post-sale-total">{euro.format(Number(result.totalAmount))}</p></div><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={18} /></button></div><p className="helper-text">Elige cómo entregar el ticket al cliente.</p><div className="post-sale-actions"><button className="primary-button" disabled={!detailsQuery.data} onClick={() => detailsQuery.data && void printSaleReceipt(detailsQuery.data)}><Printer size={18} /> Imprimir ticket</button><button className="secondary-button" disabled={emailMutation.isPending || !recipient.trim() || !emailReady} onClick={() => emailMutation.mutate()}><Mail size={18} /> {emailMutation.isPending ? "Enviando…" : "Enviar por correo"}</button></div><label className="post-sale-email"><span>Correo del cliente</span><input type="email" disabled={!emailReady} value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="cliente@ejemplo.com" autoFocus /></label><small className={emailReady ? "helper-text" : "helper-text post-sale-email-status"}>{emailStatusQuery.isLoading ? "Comprobando correo…" : emailStatusQuery.data?.message ?? "No se pudo comprobar el estado del correo."}</small></section></div>;
 }
 
 type AdminProduct = Product & { lastPurchaseCost: string; weightedAverageCost: string; minimumStock: string; isFeatured: boolean; showInTpv: boolean; isActive: boolean; updatedAt: string };
