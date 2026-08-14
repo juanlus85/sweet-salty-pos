@@ -2,6 +2,8 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   cashMovements,
   cashSessions,
+  fiscalInvoices,
+  fiscalRecords,
   categories,
   inventoryBalances,
   payments,
@@ -939,7 +941,13 @@ export async function getSaleDetails(saleId: number) {
   const sale = await database.select({ sale: sales, payment: payments }).from(sales).leftJoin(payments, eq(payments.saleId, sales.id)).where(eq(sales.id, saleId)).limit(1);
   if (!sale[0]) throw new Error("No se encontró el ticket.");
   const lines = await database.select().from(saleLines).where(eq(saleLines.saleId, saleId)).orderBy(asc(saleLines.id));
-  return { ...sale[0].sale, payment: sale[0].payment, lines };
+  const fiscal = await database
+    .select({ invoice: fiscalInvoices, record: fiscalRecords })
+    .from(fiscalInvoices)
+    .leftJoin(fiscalRecords, and(eq(fiscalRecords.fiscalInvoiceId, fiscalInvoices.id), eq(fiscalRecords.recordType, "high")))
+    .where(eq(fiscalInvoices.saleId, saleId))
+    .limit(1);
+  return { ...sale[0].sale, payment: sale[0].payment, lines, fiscal: fiscal[0] ? { ...fiscal[0].invoice, record: fiscal[0].record } : null };
 }
 
 
