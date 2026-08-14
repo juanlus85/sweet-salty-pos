@@ -119,7 +119,7 @@ apiRouter.get("/sales", async (req, res, next) => {
 apiRouter.get("/email/status", async (_req, res, next) => {
   try {
     const { getReceiptEmailStatus } = await import("./services/email");
-    res.json(getReceiptEmailStatus());
+    res.json(await getReceiptEmailStatus());
   } catch (error) {
     next(error);
   }
@@ -256,6 +256,42 @@ apiRouter.patch("/admin/vat-types/:id", async (req, res, next) => {
     const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), rate: z.number().min(0).max(100).optional(), sortOrder: z.number().int().optional(), isActive: z.boolean().optional() }), req.body);
     const { updateVatType } = await import("./services/pos");
     res.json(await updateVatType({ id: Number(req.params.id), ...input }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/settings", async (_req, res, next) => {
+  try {
+    const { getPosSettings } = await import("./services/pos");
+    res.json(await getPosSettings());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.patch("/admin/settings/smtp", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({
+      smtpHost: z.string().trim().max(255).nullable().optional(),
+      smtpPort: z.number().int().min(1).max(65535).optional(),
+      smtpSecure: z.boolean().optional(),
+      smtpUser: z.string().trim().max(320).nullable().optional(),
+      smtpPassword: z.string().max(255).optional(),
+      clearPassword: z.boolean().optional(),
+      smtpFrom: z.preprocess((value) => value === "" ? null : value, z.string().trim().email().max(320).nullable().optional()),
+    }), req.body);
+    const { updateSmtpSettings } = await import("./services/pos");
+    res.json(await updateSmtpSettings(input));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/settings/smtp/test", async (_req, res, next) => {
+  try {
+    const { verifySmtpConnection } = await import("./services/email");
+    res.json(await verifySmtpConnection());
   } catch (error) {
     next(error);
   }

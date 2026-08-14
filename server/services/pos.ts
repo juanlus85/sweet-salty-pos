@@ -7,6 +7,7 @@ import {
   categories,
   inventoryBalances,
   payments,
+  posSettings,
   products,
   purchaseInvoiceLines,
   purchaseInvoices,
@@ -507,6 +508,86 @@ export async function listAdminProducts() {
 export async function listAdminCategories() {
   const database = requireDb();
   return database.select().from(categories).where(eq(categories.isActive, true)).orderBy(asc(categories.sortOrder), asc(categories.name));
+}
+
+export type SmtpConfig = {
+  host: string | null;
+  port: number;
+  secure: boolean;
+  user: string | null;
+  password: string | null;
+  from: string | null;
+  source: "database" | "environment" | "none";
+};
+
+export async function getSmtpConfig(): Promise<SmtpConfig> {
+  const database = requireDb();
+  const rows = await database.select().from(posSettings).limit(1);
+  const stored = rows[0];
+  const hasStoredConfig = Boolean(stored?.smtpHost || stored?.smtpUser || stored?.smtpPassword || stored?.smtpFrom);
+  if (hasStoredConfig) {
+    return {
+      host: stored?.smtpHost?.trim() || null,
+      port: stored?.smtpPort ?? 587,
+      secure: stored?.smtpSecure ?? false,
+      user: stored?.smtpUser?.trim() || null,
+      password: stored?.smtpPassword || null,
+      from: stored?.smtpFrom?.trim() || null,
+      source: "database",
+    };
+  }
+  const host = process.env.SMTP_HOST?.trim() || null;
+  const user = process.env.SMTP_USER?.trim() || null;
+  const password = process.env.SMTP_PASSWORD?.trim() || null;
+  return {
+    host,
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: String(process.env.SMTP_SECURE ?? "false").toLowerCase() === "true",
+    user,
+    password,
+    from: process.env.SMTP_FROM?.trim() || null,
+    source: host || user || password ? "environment" : "none",
+  };
+}
+
+export async function getPosSettings() {
+  const database = requireDb();
+  const rows = await database.select().from(posSettings).limit(1);
+  const settings = rows[0];
+  const smtp = await getSmtpConfig();
+  return {
+    businessName: settings?.businessName ?? "Sweet & Salty",
+    currency: settings?.currency ?? "EUR",
+    timezone: settings?.timezone ?? "Europe/Madrid",
+    businessDayStartsAt: settings?.businessDayStartsAt ?? "07:00",
+    defaultVatRate: settings?.defaultVatRate ?? "10.00",
+    smtpHost: settings?.smtpHost ?? (smtp.source === "environment" ? smtp.host : null),
+    smtpPort: settings?.smtpPort ?? smtp.port,
+    smtpSecure: settings?.smtpSecure ?? smtp.secure,
+    smtpUser: settings?.smtpUser ?? (smtp.source === "environment" ? smtp.user : null),
+    smtpFrom: settings?.smtpFrom ?? (smtp.source === "environment" ? smtp.from : null),
+    smtpPasswordConfigured: Boolean(smtp.password),
+    smtpSource: smtp.source,
+  };
+}
+
+export async function updateSmtpSettings(input: { smtpHost?: string | null; smtpPort?: number; smtpSecure?: boolean; smtpUser?: string | null; smtpPassword?: string; clearPassword?: boolean; smtpFrom?: string | null }) {
+  const database = requireDb();
+  const current = await database.select().from(posSettings).limit(1);
+  const values: Partial<typeof posSettings.$inferInsert> = {};
+  if (input.smtpHost !== undefined) values.smtpHost = input.smtpHost?.trim() || null;
+  if (input.smtpPort !== undefined) values.smtpPort = input.smtpPort;
+  if (input.smtpSecure !== undefined) values.smtpSecure = input.smtpSecure;
+  if (input.smtpUser !== undefined) values.smtpUser = input.smtpUser?.trim() || null;
+  if (input.clearPassword) values.smtpPassword = null;
+  else if (input.smtpPassword !== undefined) values.smtpPassword = input.smtpPassword.trim() || null;
+  if (input.smtpFrom !== undefined) values.smtpFrom = input.smtpFrom?.trim() || null;
+  if (!current[0]) {
+    await database.insert(posSettings).values(values);
+  } else if (Object.keys(values).length > 0) {
+    await database.update(posSettings).set(values).where(eq(posSettings.id, current[0].id));
+  }
+  return getPosSettings();
 }
 
 export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean }) {

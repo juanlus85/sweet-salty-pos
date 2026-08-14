@@ -28,6 +28,12 @@ export const posSettings = mysqlTable("pos_settings", {
   timezone: varchar("timezone", { length: 64 }).notNull().default("Europe/Madrid"),
   businessDayStartsAt: varchar("business_day_starts_at", { length: 5 }).notNull().default("07:00"),
   defaultVatRate: decimal("default_vat_rate", { precision: 5, scale: 2 }).notNull().default("10.00"),
+  smtpHost: varchar("smtp_host", { length: 255 }),
+  smtpPort: int("smtp_port").notNull().default(587),
+  smtpSecure: boolean("smtp_secure").notNull().default(false),
+  smtpUser: varchar("smtp_user", { length: 320 }),
+  smtpPassword: varchar("smtp_password", { length: 255 }),
+  smtpFrom: varchar("smtp_from", { length: 320 }),
   buildVersion: varchar("build_version", { length: 64 }).notNull().default("v0.1.0"),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });

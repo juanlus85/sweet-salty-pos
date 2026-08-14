@@ -64,6 +64,13 @@
       "when": 1786681022066,
       "tag": "0008_easy_silver_fox",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1786681918496,
+      "tag": "0009_big_puma",
+      "breakpoints": true
     }
   ]
 }
