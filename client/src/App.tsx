@@ -571,8 +571,21 @@ function SupplierTable({ suppliers, onEdit, onDeactivate }: { suppliers: Supplie
   return <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Proveedor</th><th>Razón social</th><th>NIF/CIF</th><th>Contacto</th><th>Acción</th></tr></thead><tbody>{suppliers.map((supplier) => <tr key={supplier.id}><td><strong>{supplier.name}</strong></td><td>{supplier.legalName ?? "—"}</td><td>{supplier.taxId ?? "—"}</td><td>{supplier.phone ?? supplier.email ?? "—"}</td><td><div className="table-actions"><button className="table-icon-button" onClick={() => onEdit(supplier)} title="Editar proveedor"><Settings size={15} /></button><button className="table-icon-button table-icon-button--danger" onClick={() => onDeactivate(supplier.id)} title="Retirar proveedor"><Trash2 size={15} /></button></div></td></tr>)}</tbody></table>{suppliers.length === 0 && <div className="admin-empty">Aún no hay proveedores.</div>}</div>;
 }
 
+function FiscalQrPreview({ payload, hash }: { payload: string; hash: string }) {
+  const [dataUrl, setDataUrl] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 220 })
+      .then((url) => { if (!cancelled) setDataUrl(url); })
+      .catch(() => { if (!cancelled) setDataUrl(""); });
+    return () => { cancelled = true; };
+  }, [payload]);
+  return <div className="ticket-fiscal-preview"><div><strong>QR DE PREPARACIÓN</strong><span>No válido todavía para AEAT</span></div>{dataUrl ? <img src={dataUrl} alt="QR de preparación fiscal" /> : <div className="ticket-fiscal-preview__loading">Generando QR…</div>}<code>{hash}</code></div>;
+}
+
 function TicketDetailInline({ sale, onClose }: { sale: SaleDetails; onClose: () => void }) {
-  return <div className="ticket-detail-card ticket-detail-card--inline"><div className="admin-card__header"><div><span className="eyebrow">TICKET {sale.saleNumber}</span><h2>Detalle de venta</h2></div><div className="ticket-detail-actions"><button className="secondary-button secondary-button--small" onClick={() => printSaleReceipt(sale)}><Printer size={15} /> Imprimir ticket</button><button className="icon-button" onClick={onClose}><X size={17} /></button></div></div><div className="ticket-detail-lines">{sale.lines.map((line) => <div key={line.id}><span>{line.productName} × {line.quantity}</span><strong>{euro.format(Number(line.lineTotal))}</strong></div>)}</div><div className="ticket-detail-summary"><span>IVA incluido: {euro.format(Number(sale.vatAmount))}</span><strong>{euro.format(Number(sale.totalAmount))}</strong><span>{sale.payment?.method === "card" ? "Pago con tarjeta" : "Pago en efectivo"}</span></div></div>;
+  const fiscalRecord = sale.fiscal?.record;
+  return <div className="ticket-detail-card ticket-detail-card--inline"><div className="admin-card__header"><div><span className="eyebrow">TICKET {sale.saleNumber}</span><h2>Detalle de venta</h2></div><div className="ticket-detail-actions"><button className="secondary-button secondary-button--small" onClick={() => printSaleReceipt(sale)}><Printer size={15} /> Imprimir ticket</button><button className="icon-button" onClick={onClose}><X size={17} /></button></div></div><div className="ticket-detail-lines">{sale.lines.map((line) => <div key={line.id}><span>{line.productName} × {line.quantity}</span><strong>{euro.format(Number(line.lineTotal))}</strong></div>)}</div><div className="ticket-detail-summary"><span>IVA incluido: {euro.format(Number(sale.vatAmount))}</span><strong>{euro.format(Number(sale.totalAmount))}</strong><span>{sale.payment?.method === "card" ? "Pago con tarjeta" : "Pago en efectivo"}</span></div>{fiscalRecord?.qrPayload ? <FiscalQrPreview payload={fiscalRecord.qrPayload} hash={fiscalRecord.recordHash} /> : <div className="ticket-fiscal-missing">Este ticket es anterior a la preparación Veri*Factu y no tiene QR fiscal.</div>}</div>;
 }
 
 function SalesTable({ sales, onView, selectedSaleId, details, onClose }: { sales: SaleRow[]; onView?: (saleId: number) => void; selectedSaleId?: number | null; details?: SaleDetails | null; onClose?: () => void }) {

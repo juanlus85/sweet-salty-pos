@@ -214,3 +214,6 @@ button:disabled { cursor: not-allowed; }
 .profit-report__result strong { color: #397b4c; font-size: 18px; }
 .profit-report__result small { margin-left: auto; color: #91a093; font-size: 9px; }
 @media (max-width:760px) { .payment-report__legend { grid-template-columns: 1fr; }.payment-report__legend strong { margin-left: auto; } }
+
+.ticket-fiscal-preview{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:18px;padding:16px;border:1px dashed #9bb9a1;border-radius:14px;background:#f6fbf7;text-align:center}.ticket-fiscal-preview>div:first-child{display:flex;flex-direction:column;gap:3px}.ticket-fiscal-preview>div:first-child strong{font-size:12px;letter-spacing:.08em;color:#267a38}.ticket-fiscal-preview>div:first-child span{font-size:11px;color:#7a5a1b}.ticket-fiscal-preview img{width:170px;height:170px;image-rendering:auto;background:#fff;padding:6px;border-radius:8px}.ticket-fiscal-preview code{max-width:100%;font-size:9px;line-height:1.35;color:#607267;overflow-wrap:anywhere}.ticket-fiscal-preview__loading{font-size:12px;color:#607267}.ticket-fiscal-missing{margin-top:16px;padding:12px;border-radius:10px;background:#fff8e7;color:#795c20;font-size:12px;text-align:center}
+@media (max-width:720px){.ticket-fiscal-preview img{width:145px;height:145px}.ticket-fiscal-preview{padding:12px}}
