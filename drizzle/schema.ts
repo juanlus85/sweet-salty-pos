@@ -32,6 +32,82 @@ export const posSettings = mysqlTable("pos_settings", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 
+export const fiscalProfiles = mysqlTable("pos_fiscal_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  commercialName: varchar("commercial_name", { length: 160 }).notNull().default("Sweet & Salty"),
+  legalName: varchar("legal_name", { length: 255 }).notNull().default("Ana Perez Peramo"),
+  taxId: varchar("tax_id", { length: 32 }).notNull().default("77807125B"),
+  addressLine1: varchar("address_line1", { length: 255 }).notNull().default("Calle Adriano 6"),
+  postalCode: varchar("postal_code", { length: 16 }).notNull().default("41001"),
+  city: varchar("city", { length: 100 }).notNull().default("Sevilla"),
+  countryCode: varchar("country_code", { length: 2 }).notNull().default("ES"),
+  softwareName: varchar("software_name", { length: 160 }).notNull().default("Sweet & Salty POS"),
+  softwareVersion: varchar("software_version", { length: 64 }).notNull().default("preparacion-verifactu"),
+  mode: mysqlEnum("mode", ["test", "verifactu", "non_verifiable"]).notNull().default("test"),
+  submissionEnvironment: mysqlEnum("submission_environment", ["sandbox", "production"]).notNull().default("sandbox"),
+  certificateStatus: mysqlEnum("certificate_status", ["not_configured", "configured", "verified"]).notNull().default("not_configured"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_fiscal_profiles_tax_id_unique").on(table.taxId),
+]);
+
+export const fiscalSeries = mysqlTable("pos_fiscal_series", {
+  id: int("id").autoincrement().primaryKey(),
+  profileId: int("profile_id").notNull(),
+  code: varchar("code", { length: 20 }).notNull().default("SS"),
+  description: varchar("description", { length: 160 }).notNull().default("Tickets Sweet & Salty"),
+  nextNumber: int("next_number").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_fiscal_series_profile_code_unique").on(table.profileId, table.code),
+]);
+
+export const fiscalInvoices = mysqlTable("pos_fiscal_invoices", {
+  id: int("id").autoincrement().primaryKey(),
+  saleId: int("sale_id").notNull(),
+  profileId: int("profile_id").notNull(),
+  seriesId: int("series_id").notNull(),
+  sequenceNumber: int("sequence_number").notNull(),
+  invoiceNumber: varchar("invoice_number", { length: 64 }).notNull(),
+  invoiceType: mysqlEnum("invoice_type", ["simplified", "complete", "rectifying", "cancellation"]).notNull().default("simplified"),
+  status: mysqlEnum("status", ["issued", "cancelled", "rectified"]).notNull().default("issued"),
+  originalFiscalInvoiceId: int("original_fiscal_invoice_id"),
+  issuedAt: timestamp("issued_at").defaultNow().notNull(),
+  subtotal: money("subtotal").notNull(),
+  vatAmount: money("vat_amount").notNull(),
+  totalAmount: money("total_amount").notNull(),
+  immutableSnapshot: json("immutable_snapshot").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_fiscal_invoices_sale_unique").on(table.saleId),
+  uniqueIndex("pos_fiscal_invoices_number_unique").on(table.invoiceNumber),
+  index("pos_fiscal_invoices_profile_index").on(table.profileId, table.issuedAt),
+]);
+
+export const fiscalRecords = mysqlTable("pos_fiscal_records", {
+  id: int("id").autoincrement().primaryKey(),
+  fiscalInvoiceId: int("fiscal_invoice_id").notNull(),
+  recordType: mysqlEnum("record_type", ["high", "cancellation", "rectification"]).notNull().default("high"),
+  chainPosition: int("chain_position").notNull(),
+  algorithm: varchar("algorithm", { length: 32 }).notNull().default("SHA-256"),
+  previousHash: varchar("previous_hash", { length: 64 }),
+  recordHash: varchar("record_hash", { length: 64 }).notNull(),
+  canonicalPayload: json("canonical_payload").notNull(),
+  qrPayload: text("qr_payload"),
+  submissionStatus: mysqlEnum("submission_status", ["not_ready", "sandbox_pending", "sandbox_sent", "accepted", "rejected", "error"]).notNull().default("not_ready"),
+  submissionMessage: text("submission_message"),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at"),
+}, (table) => [
+  uniqueIndex("pos_fiscal_records_invoice_unique").on(table.fiscalInvoiceId, table.recordType),
+  uniqueIndex("pos_fiscal_records_chain_position_unique").on(table.chainPosition),
+  index("pos_fiscal_records_submission_index").on(table.submissionStatus, table.generatedAt),
+]);
+
 export const vatTypes = mysqlTable("pos_vat_types", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),

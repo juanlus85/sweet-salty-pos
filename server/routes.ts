@@ -133,6 +133,24 @@ apiRouter.get("/admin/reports", async (req, res, next) => {
   }
 });
 
+apiRouter.get("/admin/fiscal/readiness", async (_req, res, next) => {
+  try {
+    const { getFiscalReadinessDashboard } = await import("./services/fiscal");
+    res.json(await getFiscalReadinessDashboard());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/fiscal/verify-chain", async (_req, res, next) => {
+  try {
+    const { verifyFiscalChain } = await import("./services/fiscal");
+    res.json(await verifyFiscalChain());
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/cash/current", async (_req, res, next) => {
   try {
     res.json(await getCurrentCashSummary());

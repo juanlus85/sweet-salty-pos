@@ -15,6 +15,7 @@ import {
   vatTypes,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
+import { issueFiscalTestRecord } from "./fiscal";
 
 const toNumber = (value: string | number | null | undefined) => Number(value ?? 0);
 const money = (value: number) => value.toFixed(2);
@@ -271,6 +272,7 @@ export async function checkout(input: CheckoutInput) {
     const receivedAmount = input.paymentMethod === "cash" ? (input.receivedAmount ?? totalAmount) : totalAmount;
     if (receivedAmount < totalAmount) throw new Error("El importe recibido es menor que el total del ticket.");
     const changeAmount = input.paymentMethod === "cash" ? receivedAmount - totalAmount : 0;
+    const issuedAt = new Date();
     const saleNumber = `SS-${cashSession.businessDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
 
     const insertedSale = await tx.insert(sales).values({
@@ -280,6 +282,7 @@ export async function checkout(input: CheckoutInput) {
       vatAmount: money(vatAmount),
       totalAmount: money(totalAmount),
       note: input.note?.trim() || null,
+      createdAt: issuedAt,
     });
     const saleId = Number(insertedSale[0].insertId);
 
@@ -340,9 +343,29 @@ export async function checkout(input: CheckoutInput) {
         .where(eq(cashSessions.id, cashSession.id));
     }
 
+    const fiscal = await issueFiscalTestRecord(tx, {
+      saleId,
+      issuedAt,
+      subtotal,
+      vatAmount,
+      totalAmount,
+      paymentMethod: input.paymentMethod,
+      lines: computedLines.map((line) => ({
+        productName: line.product.name,
+        sku: line.product.sku,
+        quantity: line.soldQuantity,
+        unitPrice: line.unitPrice,
+        vatRate: line.vatRate,
+        lineSubtotal: line.lineSubtotal,
+        lineVat: line.lineVat,
+        lineTotal: line.lineTotal,
+      })),
+    });
+
     return {
       saleId,
       saleNumber,
+      fiscalInvoiceNumber: fiscal.fiscalInvoice.invoiceNumber,
       subtotal: money(subtotal),
       vatAmount: money(vatAmount),
       totalAmount: money(totalAmount),
