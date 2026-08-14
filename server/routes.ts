@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { requireDb } from "./db";
 import {
   checkout,
   closeCurrentCashSession,
@@ -146,6 +148,49 @@ apiRouter.get("/admin/fiscal/verify-chain", async (_req, res, next) => {
   try {
     const { verifyFiscalChain } = await import("./services/fiscal");
     res.json(await verifyFiscalChain());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/fiscal/invoices/:id/cancel", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ reason: z.string().trim().min(3).max(500) }), req.body);
+    const { cancelFiscalTestInvoice } = await import("./services/fiscal");
+    res.json(await cancelFiscalTestInvoice({ fiscalInvoiceId: Number(req.params.id), reason: input.reason }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/fiscal/invoices/:id/rectify", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({ reason: z.string().trim().min(3).max(500), correctedTotal: z.number().nonnegative().optional() }), req.body);
+    const { rectifyFiscalTestInvoice } = await import("./services/fiscal");
+    res.json(await rectifyFiscalTestInvoice({ fiscalInvoiceId: Number(req.params.id), reason: input.reason, correctedTotal: input.correctedTotal }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/fiscal/export", async (_req, res, next) => {
+  try {
+    const database = requireDb();
+    const { fiscalInvoices, fiscalRecords, fiscalProfiles } = await import("../drizzle/schema");
+    const profile = await database.select().from(fiscalProfiles).where(eq(fiscalProfiles.isActive, true)).limit(1);
+    const records = await database.select({ invoice: fiscalInvoices, record: fiscalRecords }).from(fiscalRecords).innerJoin(fiscalInvoices, eq(fiscalInvoices.id, fiscalRecords.fiscalInvoiceId)).orderBy(asc(fiscalRecords.chainPosition));
+    res.setHeader("Content-Disposition", `attachment; filename=verifactu-preparation-${new Date().toISOString().slice(0, 10)}.json`);
+    res.json({ mode: "test", aeatSubmission: false, profile: profile[0] ?? null, records, exportedAt: new Date().toISOString() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/fiscal/audit", async (_req, res, next) => {
+  try {
+    const database = requireDb();
+    const { auditLog } = await import("../drizzle/schema");
+    res.json(await database.select().from(auditLog).where(eq(auditLog.entityType, "fiscal_invoice")).orderBy(asc(auditLog.createdAt)).limit(200));
   } catch (error) {
     next(error);
   }

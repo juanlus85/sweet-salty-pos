@@ -45,3 +45,25 @@ Durante los doce meses posteriores a la aplicación del régimen para sujetos co
 - AEAT, FAQ sobre firma: https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/firma.html
 - AEAT, FAQ sobre huella/hash: https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/huella-hash.html
 - BOE, Real Decreto 238/2026: https://www.boe.es/diario_boe/txt.php?id=BOE-A-2026-7295
+
+## Revisión oficial adicional — 14 de agosto de 2026
+
+La AEAT confirma que el RRSIF exige garantizar integridad, conservación, accesibilidad, legibilidad, trazabilidad e inalterabilidad de los registros, sin interpolaciones, omisiones o alteraciones no anotadas. También distingue el registro de facturación de alta del registro de anulación; ambos deben conservarse y formar parte de la cadena cuando proceda. [1] [2]
+
+La AEAT indica que las facturas y facturas simplificadas deben incorporar un código QR desde la entrada en vigor de las obligaciones SIF. Los registros de facturación no son la factura electrónica y el QR debe implementarse según la especificación técnica oficial, por lo que el QR actual de preparación no debe presentarse como QR tributario válido. [1]
+
+En modalidad VERI*FACTU, la remisión en línea a AEAT forma parte del modelo de seguridad; en modalidad no VERI*FACTU se requieren medidas adicionales, incluyendo firma electrónica, registro de eventos, exportación y comprobaciones de hash, firma y encadenamiento. La aplicación seguirá bloqueando deliberadamente la remisión hasta que se configure el certificado y se valide la modalidad elegida. [2]
+
+La AEAT establece que los registros de alta erróneos no se borran: deben conservarse y vincularse a un registro de anulación o, según el caso, a una factura rectificativa. [3]
+
+La certificación del SIF corresponde al productor mediante declaración responsable, debe estar visible dentro del propio producto y accesible externamente, y debe emitirse para cada versión del sistema o ampliación relevante. La aplicación deberá incluir una ficha de versión y una declaración responsable pendiente de firma, pero no debe afirmar conformidad antes de que el productor la suscriba. [4]
+
+### Referencias adicionales
+
+[1] [AEAT — Cuestiones generales sobre SIF y VERI*FACTU](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/cuestiones-generales.html)
+
+[2] [AEAT — FAQ Sistemas VERI*FACTU](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/sistemas-verifactu.html)
+
+[3] [AEAT — Registros de facturación: anulación](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/registros-facturacion-anulacion.html)
+
+[4] [AEAT — Certificación de SIF mediante declaración responsable](https://sede.agenciatributaria.gob.es/Sede/iva/sistemas-informaticos-facturacion-verifactu/preguntas-frecuentes/certificacion-sistemas-informaticos-declaracion-responsable.html)
