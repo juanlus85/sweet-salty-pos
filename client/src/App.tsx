@@ -255,6 +255,8 @@ function PosScreen() {
 
 function PostSaleActions({ result, onClose }: { result: CheckoutResult; onClose: () => void }) {
   const [recipient, setRecipient] = useState("");
+  const [emailFieldFocused, setEmailFieldFocused] = useState(false);
+  const [secondsToClose, setSecondsToClose] = useState(30);
   const detailsQuery = useQuery({ queryKey: ["completed-sale", result.saleId], queryFn: () => api<SaleDetails>(`/sales/${result.saleId}`) });
   const emailStatusQuery = useQuery({ queryKey: ["email-status"], queryFn: () => api<{ configured: boolean; message: string }>("/email/status") });
   const emailMutation = useMutation({
@@ -263,7 +265,15 @@ function PostSaleActions({ result, onClose }: { result: CheckoutResult; onClose:
     onError: (error) => toast.error("No se ha podido enviar el ticket", { description: error.message }),
   });
   const emailReady = emailStatusQuery.data?.configured === true;
-  return <div className="modal-backdrop post-sale-backdrop"><section className="post-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="post-sale-title"><div className="dialog-header"><div><span className="eyebrow">VENTA COMPLETADA</span><h2 id="post-sale-title">{result.saleNumber}</h2><p className="post-sale-total">{euro.format(Number(result.totalAmount))}</p></div><button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={18} /></button></div><p className="helper-text">Elige cómo entregar el ticket al cliente.</p><div className="post-sale-actions"><button className="primary-button" disabled={!detailsQuery.data} onClick={() => detailsQuery.data && void printSaleReceipt(detailsQuery.data)}><Printer size={18} /> Imprimir ticket</button><button className="secondary-button" disabled={emailMutation.isPending || !recipient.trim() || !emailReady} onClick={() => emailMutation.mutate()}><Mail size={18} /> {emailMutation.isPending ? "Enviando…" : "Enviar por correo"}</button></div><label className="post-sale-email"><span>Correo del cliente</span><input type="email" disabled={!emailReady} value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="cliente@ejemplo.com" autoFocus /></label><small className={emailReady ? "helper-text" : "helper-text post-sale-email-status"}>{emailStatusQuery.isLoading ? "Comprobando correo…" : emailStatusQuery.data?.message ?? "No se pudo comprobar el estado del correo."}</small></section></div>;
+  const autoClosePaused = emailFieldFocused || emailMutation.isPending;
+  useEffect(() => {
+    if (autoClosePaused) return;
+    setSecondsToClose(30);
+    const intervalId = window.setInterval(() => setSecondsToClose((seconds) => Math.max(0, seconds - 1)), 1000);
+    const timeoutId = window.setTimeout(onClose, 30_000);
+    return () => { window.clearInterval(intervalId); window.clearTimeout(timeoutId); };
+  }, [autoClosePaused, onClose]);
+  return <div className="modal-backdrop post-sale-backdrop"><section className="post-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="post-sale-title"><div className="dialog-header"><div><span className="eyebrow">VENTA COMPLETADA</span><h2 id="post-sale-title">{result.saleNumber}</h2><p className="post-sale-total">{euro.format(Number(result.totalAmount))}</p></div><button className="post-sale-x-button" onClick={onClose} aria-label="Cerrar"><X size={24} /></button></div><p className="helper-text">Elige cómo entregar el ticket al cliente.</p><div className="post-sale-actions"><button className="primary-button" disabled={!detailsQuery.data} onClick={() => detailsQuery.data && void printSaleReceipt(detailsQuery.data)}><Printer size={18} /> Imprimir ticket</button><button className="secondary-button" disabled={emailMutation.isPending || !recipient.trim() || !emailReady} onClick={() => emailMutation.mutate()}><Mail size={18} /> {emailMutation.isPending ? "Enviando…" : "Enviar por correo"}</button></div><label className="post-sale-email"><span>Correo del cliente</span><input type="email" disabled={!emailReady} value={recipient} onFocus={() => setEmailFieldFocused(true)} onBlur={() => setEmailFieldFocused(false)} onChange={(event) => setRecipient(event.target.value)} placeholder="cliente@ejemplo.com" /></label><small className={emailReady ? "helper-text" : "helper-text post-sale-email-status"}>{emailStatusQuery.isLoading ? "Comprobando correo…" : emailStatusQuery.data?.message ?? "No se pudo comprobar el estado del correo."}</small><div className="post-sale-close-area"><small>{autoClosePaused ? "El cierre automático está pausado mientras escribes o se envía el correo." : `La ventana se cerrará automáticamente en ${secondsToClose} s.`}</small><button className="post-sale-close-button" onClick={onClose}><X size={18} /> CERRAR</button></div></section></div>;
 }
 
 type AdminProduct = Product & { lastPurchaseCost: string; weightedAverageCost: string; minimumStock: string; isFeatured: boolean; showInTpv: boolean; isActive: boolean; updatedAt: string };

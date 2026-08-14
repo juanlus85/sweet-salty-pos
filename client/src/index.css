@@ -244,3 +244,12 @@ button:disabled { cursor: not-allowed; }
 .text-button--danger { color: #b34b3e; }
 .text-button--danger:hover { color: #8d3027; }
 @media (max-width:760px) { .smtp-settings-grid { grid-template-columns: 1fr; }.smtp-settings-footer { align-items: flex-start; flex-direction: column; } }
+
+/* Cierre de la ventana posterior a la venta */
+.post-sale-x-button { width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 0; border: 1px solid #dfe8df; border-radius: 12px; color: #5a7260; background: #f7faf6; }
+.post-sale-x-button:hover { color: #9c3f35; border-color: #e9c9c3; background: #fff4f1; }
+.post-sale-close-area { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 17px; padding-top: 13px; border-top: 1px solid #e6ede5; }
+.post-sale-close-area small { color: #89998c; font-size: 10px; line-height: 1.35; }
+.post-sale-close-button { min-width: 132px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: none; padding: 0 16px; border: 1px solid #cfdccf; border-radius: 10px; color: #45654d; background: #f6faf5; font-size: 12px; font-weight: 900; letter-spacing: .2px; }
+.post-sale-close-button:hover { border-color: #9fc3a5; color: #2f623d; background: #eaf6e9; }
+@media (max-width:480px) { .post-sale-close-area { align-items: stretch; flex-direction: column; }.post-sale-close-button { width: 100%; } }
