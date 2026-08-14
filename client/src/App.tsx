@@ -631,13 +631,21 @@ function CategoryManager({ categories, formOpen, editingId, form, imageUrl, isSa
 }
 
 
+const ISSUER = {
+  name: "Sweet & Salty",
+  address: "Calle Adriano 6",
+  postalCity: "41001 Sevilla",
+  holder: "Ana Perez Peramo",
+  taxId: "77807125B",
+};
+
 function printSaleReceipt(sale: SaleDetails) {
   const printWindow = window.open("", "sweet-salty-receipt", "width=420,height=720");
   if (!printWindow) { toast.error("El navegador ha bloqueado la impresión", { description: "Permite ventanas emergentes para imprimir tickets." }); return; }
   const escape = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character] ?? character));
-  const lines = sale.lines.map((line) => `<tr><td>${escape(line.productName)}<br><small>${escape(line.quantity)} × ${euro.format(Number(line.unitPrice))}</small></td><td>${euro.format(Number(line.lineTotal))}</td></tr>`).join("");
+  const lines = sale.lines.map((line) => `<tr><td>${escape(line.productName)}<br><small>${escape(line.quantity)} ud. × ${euro.format(Number(line.unitPrice))}</small></td><td>${euro.format(Number(line.lineTotal))}</td></tr>`).join("");
   const date = new Date(sale.createdAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
-  printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Ticket ${escape(sale.saleNumber)}</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{width:72mm;margin:0;color:#111;font:12px Arial,sans-serif}h1,h2,p{margin:0;text-align:center}h1{font-size:20px;margin-bottom:4px}h2{font-size:12px;font-weight:400;margin-bottom:14px}.meta{border-top:1px dashed #111;border-bottom:1px dashed #111;padding:7px 0;margin-bottom:9px;font-size:10px}table{width:100%;border-collapse:collapse}td{padding:4px 0;vertical-align:top}td:last-child{text-align:right;white-space:nowrap}small{font-size:10px}.total{display:flex;justify-content:space-between;border-top:1px dashed #111;margin-top:8px;padding-top:8px;font-size:16px;font-weight:700}.foot{margin-top:14px;font-size:10px}@media print{body{width:72mm}}</style></head><body><h1>Sweet &amp; Salty</h1><h2>Ticket de venta</h2><div class="meta">${escape(sale.saleNumber)}<br>${escape(date)}<br>${sale.payment?.method === "card" ? "Pago con tarjeta" : "Pago en efectivo"}</div><table>${lines}</table><div class="total"><span>TOTAL</span><span>${euro.format(Number(sale.totalAmount))}</span></div><p class="foot">IVA incluido: ${euro.format(Number(sale.vatAmount))}<br>Gracias por tu visita</p><script>window.onload=()=>{window.focus();window.print();};<\/script></body></html>`);
+  printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Ticket ${escape(sale.saleNumber)}</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{width:72mm;margin:0;color:#111;font:12px Arial,sans-serif}h1,h2,p{margin:0;text-align:center}h1{font-size:20px;margin-bottom:4px}h2{font-size:12px;font-weight:400;margin-bottom:3px}.issuer{font-size:10px;text-align:center;margin-bottom:10px}.issuer p{margin:2px 0}.meta{border-top:1px dashed #111;border-bottom:1px dashed #111;padding:7px 0;margin-bottom:9px;font-size:10px}table{width:100%;border-collapse:collapse}td{padding:4px 0;vertical-align:top}td:last-child{text-align:right;white-space:nowrap}small{font-size:10px}.total{display:flex;justify-content:space-between;border-top:1px dashed #111;margin-top:8px;padding-top:8px;font-size:16px;font-weight:700}.foot{margin-top:14px;font-size:10px}@media print{body{width:72mm}}</style></head><body><h1>${ISSUER.name}</h1><h2>Ticket de venta</h2><div class="issuer"><p>${ISSUER.address}</p><p>${ISSUER.postalCity}</p><p>${ISSUER.holder} · NIF ${ISSUER.taxId}</p></div><div class="meta">${escape(sale.saleNumber)}<br>${escape(date)}<br>${sale.payment?.method === "card" ? "Pago con tarjeta" : "Pago en efectivo"}</div><table>${lines}</table><div class="total"><span>TOTAL</span><span>${euro.format(Number(sale.totalAmount))}</span></div><p class="foot">IVA incluido: ${euro.format(Number(sale.vatAmount))}<br>Gracias por tu visita</p><script>window.onload=()=>{window.focus();window.print();};<\/script></body></html>`);
   printWindow.document.close();
 }
 
