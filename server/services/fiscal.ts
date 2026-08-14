@@ -228,12 +228,18 @@ export async function getFiscalReadinessDashboard() {
   const totals = await database
     .select({ count: sql<number>`count(*)` })
     .from(fiscalRecords);
+  const queue = await database
+    .select({ status: fiscalSubmissions.status, count: sql<number>`count(*)` })
+    .from(fiscalSubmissions)
+    .groupBy(fiscalSubmissions.status);
+  const blockedSubmissions = Number(queue.find((item) => item.status === "blocked")?.count ?? 0);
 
   return {
     mode: "test" as const,
     profile: profile[0] ?? null,
     records,
     totalRecords: Number(totals[0]?.count ?? 0),
+    submissionQueue: { blocked: blockedSubmissions, total: queue.reduce((sum, item) => sum + Number(item.count ?? 0), 0), enabled: false },
     readiness: {
       immutableRecords: true,
       sha256Chain: true,
