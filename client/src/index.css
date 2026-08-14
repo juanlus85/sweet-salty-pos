@@ -175,3 +175,24 @@ button:disabled { cursor: not-allowed; }
 .report-table td, .report-table th { padding-left: 7px; padding-right: 7px; }
 @media (max-width:1100px) { .report-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width:760px) { .report-filters { display: block; }.report-filter-group { align-items: stretch; }.report-filter-group label { flex: 1; min-width: 130px; }.report-filter-group select, .report-filter-group input { width: 100%; }.report-period-label { display: block; margin-top: 12px; }.report-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }.report-bars { grid-template-columns: repeat(auto-fit,minmax(36px,1fr)); gap: 5px; padding-left: 0; padding-right: 0; }.report-bar-column { min-width: 36px; }.report-bar-column strong { font-size: 7px; }.report-columns { display: block; }.report-columns > .admin-card + .admin-card { margin-top: 14px; } }
+
+/* Administración: contenido desplazable sin bloquear Informes */
+@media (min-width: 761px) {
+  .admin-shell { height: 100vh; min-height: 0; overflow: hidden; }
+  .admin-sidebar { height: 100vh; min-height: 0; overflow: hidden; }
+  .admin-content { height: 100vh; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (max-width: 760px) {
+  html, body, #root { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+  .admin-shell { min-height: 100vh; overflow: visible; }
+  .admin-content { height: auto; overflow: visible; }
+}
+.admin-nav__item { position: relative; border: 1px solid transparent; transition: color .16s, background .16s, border-color .16s, transform .16s; }
+.admin-nav__item svg { flex: none; color: #829485; transition: color .16s, transform .16s; }
+.admin-nav__item:hover svg { color: #4e9960; transform: scale(1.08); }
+.admin-nav__item--active { border-color: #d5e9d5; }
+.admin-nav__item--active svg { color: #32874a; }
+@media (max-width: 760px) {
+  .admin-nav__item { border-color: transparent; }
+  .admin-nav__item--active { border-color: #cfe6d1; }
+}

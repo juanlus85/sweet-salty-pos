@@ -4,6 +4,9 @@ import {
   ArrowLeft,
   Banknote,
   Barcode,
+  BarChart3,
+  CalendarDays,
+  ChartNoAxesCombined,
   ChevronDown,
   Check,
   Coffee,
@@ -29,6 +32,7 @@ import {
   Upload,
   Trash2,
   UtensilsCrossed,
+  UsersRound,
   X,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
@@ -484,13 +488,13 @@ function AdminScreen({ onBack }: { onBack: () => void }) {
   const topProducts = reportQuery.data?.slice(0, 5) ?? [];
 
   const tabs: Array<{ id: AdminTab; label: string; icon: typeof LayoutGrid }> = [
-    { id: "analysis", label: "Análisis diario", icon: LayoutGrid },
-    { id: "reports", label: "Informes", icon: LayoutGrid },
-    { id: "overview", label: "Resumen", icon: LayoutGrid },
+    { id: "analysis", label: "Análisis diario", icon: CalendarDays },
+    { id: "reports", label: "Informes", icon: BarChart3 },
+    { id: "overview", label: "Resumen", icon: ChartNoAxesCombined },
     { id: "categories", label: "Familias", icon: Folder },
     { id: "products", label: "Productos", icon: PackageOpen },
     { id: "inventory", label: "Stock", icon: ShoppingBag },
-    { id: "suppliers", label: "Proveedores", icon: UtensilsCrossed },
+    { id: "suppliers", label: "Proveedores", icon: UsersRound },
     { id: "purchases", label: "Compras y facturas", icon: ReceiptText },
     { id: "sales", label: "Ventas", icon: Barcode },
     { id: "cash", label: "Caja", icon: Banknote },
@@ -501,7 +505,7 @@ function AdminScreen({ onBack }: { onBack: () => void }) {
     <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="brand"><span className="brand-mark">S/S</span><div><strong>Sweet &amp; Salty</strong><small>Administración</small></div></div>
-        <nav className="admin-nav">{tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "admin-nav__item admin-nav__item--active" : "admin-nav__item"} onClick={() => setTab(id)}><Icon size={17} /><span>{label}</span>{id === "inventory" && lowStock.length > 0 && <b>{lowStock.length}</b>}</button>)}</nav>
+        <nav className="admin-nav">{tabs.map(({ id, label, icon: Icon }) => <button key={id} title={label} className={tab === id ? "admin-nav__item admin-nav__item--active" : "admin-nav__item"} onClick={() => setTab(id)}><Icon size={19} strokeWidth={1.8} /><span>{label}</span>{id === "inventory" && lowStock.length > 0 && <b>{lowStock.length}</b>}</button>)}</nav>
         <div className="admin-sidebar__footer"><small>Versión v0.1.0 · 2026</small><button onClick={onBack}><ShoppingBag size={16} /> Volver al TPV</button></div>
       </aside>
       <section className="admin-content">
