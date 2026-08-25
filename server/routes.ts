@@ -318,6 +318,16 @@ apiRouter.post("/admin/loyverse/sync/catalog", async (_req, res, next) => {
   }
 });
 
+apiRouter.post("/admin/loyverse/import/catalog", async (req, res, next) => {
+  try {
+    const storeId = typeof req.body?.storeId === "string" && req.body.storeId.trim() ? req.body.storeId.trim() : undefined;
+    const { importLoyverseCatalogToOperational } = await import("./services/pos");
+    res.json(await importLoyverseCatalogToOperational(storeId));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.post("/admin/loyverse/sync/sales", async (req, res, next) => {
   try {
     const parseDate = (value: unknown) => typeof value === "string" && value ? new Date(value) : undefined;

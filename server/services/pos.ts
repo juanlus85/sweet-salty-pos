@@ -16,6 +16,12 @@ import {
   stockMovements,
   suppliers,
   vatTypes,
+  loyverseCategories,
+  loyverseItems,
+  loyverseVariants,
+  loyverseVariantPrices,
+  loyverseInventoryLevels,
+  loyverseSyncState,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { issueFiscalTestRecord } from "./fiscal";
@@ -1110,4 +1116,150 @@ export async function updateClosedCashSession(input: { id: number; countedCash: 
   const difference = money(input.countedCash - toNumber(current[0].expectedCash));
   await database.update(cashSessions).set({ countedCash: money(input.countedCash), countedCard: money(input.countedCard), denominationCounts: input.denominationCounts ?? null, difference, notes: input.notes?.trim() || null }).where(eq(cashSessions.id, input.id));
   return { success: true, id: input.id, difference };
+}
+
+
+function normalizeCatalogText(value: string | null | undefined) {
+  return (value ?? "").trim().toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+export async function importLoyverseCatalogToOperational(requestedStoreId?: string) {
+  const database = requireDb();
+  const [settingsRows, syncStates, remoteCategories, remoteItems, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
+    database.select().from(posSettings).limit(1),
+    database.select().from(loyverseSyncState).limit(1),
+    database.select().from(loyverseCategories),
+    database.select().from(loyverseItems),
+    database.select().from(loyverseVariants),
+    database.select().from(loyverseVariantPrices),
+    database.select().from(loyverseInventoryLevels),
+    database.select().from(categories),
+    database.select().from(products),
+    database.select().from(inventoryBalances),
+  ]);
+  if (!remoteItems.length || !remoteVariants.length) throw new Error("Primero sincroniza el catálogo de Loyverse para poder importarlo al TPV.");
+
+  const configuredStoreId = settingsRows[0]?.loyverseStoreId || syncStates[0]?.activeStoreId || null;
+  const availableStoreId = requestedStoreId || configuredStoreId || remotePrices[0]?.storeLoyverseId || remoteInventory[0]?.storeLoyverseId || null;
+  if (!availableStoreId) throw new Error("No hay ninguna tienda de Loyverse disponible para importar precios y stock.");
+
+  const pricesByVariant = new Map<string, typeof remotePrices[number]>();
+  for (const price of remotePrices) {
+    if (price.storeLoyverseId === availableStoreId || !pricesByVariant.has(price.variantLoyverseId)) pricesByVariant.set(price.variantLoyverseId, price);
+  }
+  const stockByVariant = new Map<string, number>();
+  for (const level of remoteInventory) {
+    if (level.storeLoyverseId === availableStoreId) stockByVariant.set(level.variantLoyverseId, toNumber(level.inStock));
+  }
+  const variantsByItem = new Map<string, typeof remoteVariants>();
+  for (const variant of remoteVariants) variantsByItem.set(variant.itemLoyverseId, [...(variantsByItem.get(variant.itemLoyverseId) ?? []), variant]);
+
+  const imported = await database.transaction(async (tx) => {
+    const categoryByRemoteId = new Map<string, number>();
+    const categoryByName = new Map<string, typeof localCategories[number]>();
+    for (const category of localCategories) categoryByName.set(normalizeCatalogText(category.name), category);
+    let categoriesCreated = 0;
+    let categoriesUpdated = 0;
+    for (const remote of remoteCategories) {
+      const remoteId = remote.loyverseId;
+      const normalizedName = normalizeCatalogText(remote.name);
+      let local = localCategories.find((candidate) => candidate.loyverseId === remoteId) ?? categoryByName.get(normalizedName);
+      if (!local) {
+        const inserted = await tx.insert(categories).values({ name: remote.name.trim() || `Loyverse ${remoteId.slice(0, 8)}`, color: remote.color?.trim() || "#155E75", loyverseId: remoteId, isActive: !remote.deletedAt }).$returningId();
+        const localId = Number(inserted[0]?.id);
+        local = { id: localId, loyverseId: remoteId, name: remote.name, color: remote.color, imageUrl: null, iconName: "Package", sortOrder: 0, isFeatured: false, isActive: !remote.deletedAt, createdAt: new Date(), updatedAt: new Date() } as typeof localCategories[number];
+        localCategories.push(local);
+        categoryByName.set(normalizedName, local);
+        categoriesCreated += 1;
+      } else {
+        const changes: Partial<typeof categories.$inferInsert> = { loyverseId: remoteId, isActive: !remote.deletedAt };
+        if (remote.name.trim() && normalizeCatalogText(local.name) !== normalizedName) changes.name = remote.name.trim();
+        if (remote.color?.trim()) changes.color = remote.color.trim().slice(0, 7);
+        await tx.update(categories).set(changes).where(eq(categories.id, local.id));
+        local = { ...local, ...changes } as typeof localCategories[number];
+        const index = localCategories.findIndex((candidate) => candidate.id === local?.id);
+        if (index >= 0) localCategories[index] = local;
+        categoryByName.set(normalizedName, local);
+        categoriesUpdated += 1;
+      }
+      categoryByRemoteId.set(remoteId, local.id);
+    }
+
+    let fallbackCategory = localCategories.find((category) => normalizeCatalogText(category.name) === "sin familia");
+    if (!fallbackCategory) {
+      const inserted = await tx.insert(categories).values({ name: "Sin familia", color: "#6B7280", iconName: "Package", isActive: true }).$returningId();
+      fallbackCategory = { id: Number(inserted[0]?.id), loyverseId: null, name: "Sin familia", color: "#6B7280", imageUrl: null, iconName: "Package", sortOrder: 999, isFeatured: false, isActive: true, createdAt: new Date(), updatedAt: new Date() } as typeof localCategories[number];
+      localCategories.push(fallbackCategory);
+      categoriesCreated += 1;
+    }
+
+    const productByVariant = new Map<string, typeof localProducts[number]>();
+    const productBySku = new Map<string, typeof localProducts[number]>();
+    const productByBarcode = new Map<string, typeof localProducts[number]>();
+    const productByName = new Map<string, typeof localProducts[number]>();
+    for (const product of localProducts) {
+      if (product.loyverseVariantId) productByVariant.set(product.loyverseVariantId, product);
+      if (product.sku) productBySku.set(normalizeCatalogText(product.sku), product);
+      if (product.barcode) productByBarcode.set(normalizeCatalogText(product.barcode), product);
+      productByName.set(normalizeCatalogText(product.name), product);
+    }
+    const balanceByProduct = new Map(localBalances.map((balance) => [balance.productId, balance]));
+    const defaultVatRate = toNumber(settingsRows[0]?.defaultVatRate ?? 10);
+    const defaultVat = await tx.select({ id: vatTypes.id, rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.isActive, true), eq(vatTypes.rate, money(defaultVatRate)))).limit(1);
+    let productsCreated = 0;
+    let productsUpdated = 0;
+    let stockUpdated = 0;
+    let skipped = 0;
+
+    for (const item of remoteItems) {
+      const itemVariants = variantsByItem.get(item.loyverseId) ?? [];
+      for (const variant of itemVariants) {
+        const optionLabel = [variant.option1Value, variant.option2Value, variant.option3Value].filter(Boolean).join(" / ");
+        const productName = optionLabel && itemVariants.length > 1 ? `${item.itemName} · ${optionLabel}` : item.itemName;
+        const categoryId = (item.categoryLoyverseId && categoryByRemoteId.get(item.categoryLoyverseId)) || fallbackCategory.id;
+        const priceRow = pricesByVariant.get(variant.loyverseId);
+        const salePrice = toNumber(priceRow?.price ?? variant.defaultPrice);
+        const stockAfter = stockByVariant.get(variant.loyverseId) ?? 0;
+        const skuKey = normalizeCatalogText(variant.sku);
+        const barcodeKey = normalizeCatalogText(variant.barcode);
+        let local = productByVariant.get(variant.loyverseId) ?? (skuKey ? productBySku.get(skuKey) : undefined) ?? (barcodeKey ? productByBarcode.get(barcodeKey) : undefined) ?? productByName.get(normalizeCatalogText(productName));
+        if (local && local.loyverseVariantId && local.loyverseVariantId !== variant.loyverseId) local = undefined;
+        try {
+          if (!local) {
+            const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName.trim() || `Loyverse ${variant.loyverseId.slice(0, 8)}`, sku: variant.sku?.trim() || null, barcode: variant.barcode?.trim() || null, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) });
+            const productId = Number(inserted[0].insertId);
+            local = { id: productId, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: variant.sku, barcode: variant.barcode, imageUrl: item.imageUrl, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
+            localProducts.push(local);
+            productsCreated += 1;
+          } else {
+            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName.trim() || local.name, sku: variant.sku?.trim() || local.sku || null, barcode: variant.barcode?.trim() || local.barcode || null, imageUrl: item.imageUrl || null, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) }).where(eq(products.id, local.id));
+            local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: variant.sku, barcode: variant.barcode, imageUrl: item.imageUrl, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
+            productsUpdated += 1;
+          }
+          productByVariant.set(variant.loyverseId, local);
+          if (local.sku) productBySku.set(normalizeCatalogText(local.sku), local);
+          if (local.barcode) productByBarcode.set(normalizeCatalogText(local.barcode), local);
+          productByName.set(normalizeCatalogText(local.name), local);
+          const current = balanceByProduct.get(local.id);
+          const stockBefore = toNumber(current?.quantityOnHand);
+          if (!current) {
+            await tx.insert(inventoryBalances).values({ productId: local.id, quantityOnHand: quantity(stockAfter) });
+            balanceByProduct.set(local.id, { productId: local.id, quantityOnHand: quantity(stockAfter), updatedAt: new Date() });
+            if (stockAfter !== 0) await tx.insert(stockMovements).values({ productId: local.id, movementType: "adjustment", quantityDelta: quantity(stockAfter), quantityBefore: "0.000", quantityAfter: quantity(stockAfter), sourceType: "loyverse_import", sourceId: local.id, note: `Stock inicial importado desde Loyverse · ${availableStoreId}` });
+            stockUpdated += 1;
+          } else if (Math.abs(stockBefore - stockAfter) > 0.0005) {
+            await tx.update(inventoryBalances).set({ quantityOnHand: quantity(stockAfter) }).where(eq(inventoryBalances.productId, local.id));
+            await tx.insert(stockMovements).values({ productId: local.id, movementType: "adjustment", quantityDelta: quantity(stockAfter - stockBefore), quantityBefore: quantity(stockBefore), quantityAfter: quantity(stockAfter), sourceType: "loyverse_import", sourceId: local.id, note: `Stock sincronizado desde Loyverse · ${availableStoreId}` });
+            balanceByProduct.set(local.id, { ...current, quantityOnHand: quantity(stockAfter) });
+            stockUpdated += 1;
+          }
+        } catch (error) {
+          if (String(error).toLowerCase().includes("duplicate")) skipped += 1;
+          else throw error;
+        }
+      }
+    }
+    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, skipped, storeId: availableStoreId };
+  });
+  return { success: true, ...imported };
 }

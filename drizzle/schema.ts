@@ -336,6 +336,7 @@ export const vatTypes = mysqlTable("pos_vat_types", {
 
 export const categories = mysqlTable("pos_categories", {
   id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }),
   name: varchar("name", { length: 100 }).notNull(),
   color: varchar("color", { length: 7 }).notNull().default("#155E75"),
   imageUrl: text("image_url"),
@@ -347,6 +348,7 @@ export const categories = mysqlTable("pos_categories", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => [
   uniqueIndex("pos_categories_name_unique").on(table.name),
+  uniqueIndex("pos_categories_loyverse_id_unique").on(table.loyverseId),
   index("pos_categories_sort_index").on(table.sortOrder, table.isActive),
 ]);
 
@@ -369,6 +371,9 @@ export const suppliers = mysqlTable("pos_suppliers", {
 
 export const products = mysqlTable("pos_products", {
   id: int("id").autoincrement().primaryKey(),
+  loyverseItemId: varchar("loyverse_item_id", { length: 64 }),
+  loyverseVariantId: varchar("loyverse_variant_id", { length: 64 }),
+  loyverseStoreId: varchar("loyverse_store_id", { length: 64 }),
   categoryId: int("category_id").notNull(),
   primarySupplierId: int("primary_supplier_id"),
   vatTypeId: int("vat_type_id"),
@@ -394,6 +399,7 @@ export const products = mysqlTable("pos_products", {
 }, (table) => [
   uniqueIndex("pos_products_sku_unique").on(table.sku),
   uniqueIndex("pos_products_barcode_unique").on(table.barcode),
+  uniqueIndex("pos_products_loyverse_variant_id_unique").on(table.loyverseVariantId),
   index("pos_products_category_index").on(table.categoryId, table.isActive),
   index("pos_products_name_index").on(table.name),
 ]);

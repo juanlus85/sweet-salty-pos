@@ -18,6 +18,8 @@ import {
 const DEFAULT_API_BASE = "https://api.loyverse.com/v1.0";
 const PAGE_LIMIT = 250;
 const MAX_PAGES = 1000;
+const REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_SALES_LOOKBACK_DAYS = 90;
 
 let activeSync: Promise<unknown> | null = null;
 
@@ -74,13 +76,19 @@ function dateParam(value?: Date) {
   return value?.toISOString();
 }
 
+async function runBatches<T>(items: T[], worker: (item: T) => Promise<void>, batchSize = 5) {
+  for (let index = 0; index < items.length; index += batchSize) {
+    await Promise.all(items.slice(index, index + batchSize).map(worker));
+  }
+}
+
 async function loyverseRequest(path: string, params: Record<string, string | undefined> = {}) {
   const config = await ensureConfigured();
   const url = new URL(`${config.apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`);
   Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") url.searchParams.set(key, value); });
   const response = await fetch(url, {
     headers: { Accept: "application/json", Authorization: `Bearer ${config.token}` },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const body = await response.text();
   let payload: unknown = null;
@@ -341,12 +349,12 @@ export async function syncLoyverseCatalog() {
     const stores = await fetchAll("/stores", "stores", { show_deleted: "true" });
     const categories = await fetchAll("/categories", "categories", { show_deleted: "true" });
     const items = await fetchAll("/items", "items", { show_deleted: "true" });
-    for (const store of stores) await upsertStore(store);
-    for (const category of categories) await upsertCategory(category);
-    for (const item of items) await upsertItem(item);
+    await runBatches(stores, upsertStore);
+    await runBatches(categories, upsertCategory);
+    await runBatches(items, upsertItem, 4);
     const storeIds = stores.map((store) => asString(store.id)).filter((id): id is string => Boolean(id));
     const inventory = await fetchAll("/inventory", "inventory_levels", { store_ids: storeIds.length ? storeIds.join(",") : undefined });
-    for (const level of inventory) await upsertInventory(level);
+    await runBatches(inventory, upsertInventory, 8);
     const activeStoreId = config.storeId || storeIds[0] || null;
     const activeStore = stores.find((store) => asString(store.id) === activeStoreId);
     const finishedAt = new Date();
@@ -361,18 +369,19 @@ export async function syncLoyverseCatalog() {
 
 export async function syncLoyverseSales(range: SyncDateRange = {}) {
   await ensureConfigured();
+  const effectiveRange = range.from || range.to ? range : { from: new Date(Date.now() - DEFAULT_SALES_LOOKBACK_DAYS * 24 * 60 * 60 * 1000), to: new Date() };
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
   try {
     const database = requireDb();
     const [items, receipts, shifts] = await Promise.all([
       database.select().from(loyverseItems),
-      fetchAll("/receipts", "receipts", { created_at_min: dateParam(range.from), created_at_max: dateParam(range.to), order: "created_at_asc" }),
-      fetchAll("/shifts", "shifts", { created_at_min: dateParam(range.from), created_at_max: dateParam(range.to) }),
+      fetchAll("/receipts", "receipts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), order: "created_at_asc" }),
+      fetchAll("/shifts", "shifts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to) }),
     ]);
     const itemNames = new Map(items.map((item) => [item.loyverseId, item.itemName]));
-    for (const receipt of receipts) await upsertReceipt(receipt, itemNames);
-    for (const shift of shifts) await upsertShift(shift);
+    await runBatches(receipts, (receipt) => upsertReceipt(receipt, itemNames), 4);
+    await runBatches(shifts, upsertShift, 8);
     const finishedAt = new Date();
     await saveSyncState({ salesSyncedAt: finishedAt, lastSyncFinishedAt: finishedAt, lastSyncStatus: "success", lastSyncError: null });
     return { success: true, receipts: receipts.length, shifts: shifts.length, syncedAt: finishedAt.toISOString() };
