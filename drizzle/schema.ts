@@ -34,6 +34,9 @@ export const posSettings = mysqlTable("pos_settings", {
   smtpUser: varchar("smtp_user", { length: 320 }),
   smtpPassword: varchar("smtp_password", { length: 255 }),
   smtpFrom: varchar("smtp_from", { length: 320 }),
+  loyverseApiBaseUrl: varchar("loyverse_api_base_url", { length: 255 }),
+  loyverseApiToken: varchar("loyverse_api_token", { length: 255 }),
+  loyverseStoreId: varchar("loyverse_store_id", { length: 64 }),
   buildVersion: varchar("build_version", { length: 64 }).notNull().default("v0.1.0"),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });

@@ -284,3 +284,15 @@ button:disabled { cursor: not-allowed; }
 .loyverse-empty span { color: #9aa89c; font-size: 11px; }
 @media (max-width:900px) { .loyverse-count-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.loyverse-filter-grid { grid-template-columns: 1fr 1fr; }.loyverse-filter-hint { grid-column: 1 / -1; } }
 @media (max-width:600px) { .loyverse-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.loyverse-sync-panel { align-items: stretch; flex-direction: column; }.loyverse-sync-actions { justify-content: stretch; }.loyverse-sync-actions button { flex: 1; }.loyverse-filter-grid { grid-template-columns: 1fr; }.loyverse-filter-hint { grid-column: auto; }.loyverse-metrics { grid-template-columns: 1fr 1fr; } }
+
+.loyverse-config-card { margin-bottom: 16px; border-color: #cfe1d1; background: #fbfef9; }
+.loyverse-config-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.loyverse-config-grid label { display: grid; gap: 6px; color: #648069; font-size: 10px; font-weight: 800; }
+.loyverse-config-grid input { min-height: 38px; padding: 0 11px; border: 1px solid #dbe6db; border-radius: 8px; outline: none; color: #2b4933; background: #fff; font-size: 12px; }
+.loyverse-config-grid input:focus { border-color: #72a878; box-shadow: 0 0 0 3px rgba(114,168,120,.14); }
+.loyverse-config-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 14px; border-top: 1px solid #e3ece2; }
+.loyverse-token-field input { letter-spacing: .05em; }
+.checkbox-label { display: inline-flex !important; align-items: center; gap: 7px; color: #758879 !important; font-size: 10px !important; font-weight: 600 !important; }
+.checkbox-label input { accent-color: #5a9362; }
+@media (max-width:900px) { .loyverse-config-grid { grid-template-columns: 1fr 1fr; }.loyverse-token-field { grid-column: 1 / -1; } }
+@media (max-width:600px) { .loyverse-config-grid { grid-template-columns: 1fr; }.loyverse-token-field { grid-column: auto; }.loyverse-config-actions { align-items: stretch; flex-direction: column; }.loyverse-config-actions .primary-button { width: 100%; } }

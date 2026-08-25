@@ -3,6 +3,7 @@ import { requireDb } from "../db";
 import {
   loyverseCategories,
   loyverseInventoryLevels,
+  posSettings,
   loyverseItems,
   loyverseReceiptLines,
   loyverseReceiptPayments,
@@ -23,18 +24,23 @@ let activeSync: Promise<unknown> | null = null;
 type JsonObject = Record<string, any>;
 type SyncDateRange = { from?: Date; to?: Date };
 
-function apiBase() {
-  return (process.env.LOYVERSE_API_BASE_URL?.trim() || DEFAULT_API_BASE).replace(/\/$/, "");
+async function getRuntimeConfig() {
+  const database = requireDb();
+  const rows = await database.select({ apiBaseUrl: posSettings.loyverseApiBaseUrl, token: posSettings.loyverseApiToken, storeId: posSettings.loyverseStoreId }).from(posSettings).limit(1);
+  const row = rows[0];
+  return {
+    apiBaseUrl: (row?.apiBaseUrl?.trim() || process.env.LOYVERSE_API_BASE_URL?.trim() || DEFAULT_API_BASE).replace(/\/$/, ""),
+    token: row?.token?.trim() || process.env.LOYVERSE_API_TOKEN?.trim() || "",
+    storeId: row?.storeId?.trim() || process.env.LOYVERSE_STORE_ID?.trim() || "",
+  };
 }
 
-function getToken() {
-  return process.env.LOYVERSE_API_TOKEN?.trim() || "";
-}
-
-function ensureConfigured() {
-  if (!getToken()) {
-    throw new Error("Loyverse no está configurado. Añade LOYVERSE_API_TOKEN en el servidor y reinicia la aplicación.");
+async function ensureConfigured() {
+  const config = await getRuntimeConfig();
+  if (!config.token) {
+    throw new Error("Loyverse no está configurado. Guarda el token desde Administración → Loyverse o añade LOYVERSE_API_TOKEN en el servidor.");
   }
+  return config;
 }
 
 function asObject(value: unknown): JsonObject {
@@ -69,11 +75,11 @@ function dateParam(value?: Date) {
 }
 
 async function loyverseRequest(path: string, params: Record<string, string | undefined> = {}) {
-  ensureConfigured();
-  const url = new URL(`${apiBase()}${path.startsWith("/") ? path : `/${path}`}`);
+  const config = await ensureConfigured();
+  const url = new URL(`${config.apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`);
   Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") url.searchParams.set(key, value); });
   const response = await fetch(url, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${getToken()}` },
+    headers: { Accept: "application/json", Authorization: `Bearer ${config.token}` },
     signal: AbortSignal.timeout(30_000),
   });
   const body = await response.text();
@@ -118,8 +124,15 @@ async function saveSyncState(values: Partial<typeof loyverseSyncState.$inferInse
   return getSyncRow();
 }
 
+export async function testLoyverseConnection() {
+  const config = await ensureConfigured();
+  const merchant = await loyverseRequest("/merchant");
+  return { success: true, merchantName: asString(merchant.name), apiBase: config.apiBaseUrl };
+}
+
 export async function getLoyverseStatus() {
   const state = await getSyncRow();
+  const runtimeConfig = await getRuntimeConfig();
   const database = requireDb();
   const [stores, categories, items, variants, prices, inventory, receipts, lines, shifts] = await Promise.all([
     database.select({ count: loyverseStores.id }).from(loyverseStores),
@@ -133,8 +146,8 @@ export async function getLoyverseStatus() {
     database.select({ count: loyverseShifts.id }).from(loyverseShifts),
   ]);
   return {
-    configured: Boolean(getToken()),
-    apiBase: apiBase(),
+    configured: Boolean(runtimeConfig.token),
+    apiBase: runtimeConfig.apiBaseUrl,
     state: state ? { ...state, lastSyncError: state.lastSyncError } : null,
     counts: { stores: stores.length, categories: categories.length, items: items.length, variants: variants.length, prices: prices.length, inventoryLevels: inventory.length, receipts: receipts.length, receiptLines: lines.length, shifts: shifts.length },
   };
@@ -320,7 +333,7 @@ async function upsertShift(shift: JsonObject) {
 }
 
 export async function syncLoyverseCatalog() {
-  ensureConfigured();
+  const config = await ensureConfigured();
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
   try {
@@ -334,7 +347,7 @@ export async function syncLoyverseCatalog() {
     const storeIds = stores.map((store) => asString(store.id)).filter((id): id is string => Boolean(id));
     const inventory = await fetchAll("/inventory", "inventory_levels", { store_ids: storeIds.length ? storeIds.join(",") : undefined });
     for (const level of inventory) await upsertInventory(level);
-    const activeStoreId = asString(process.env.LOYVERSE_STORE_ID) || storeIds[0] || null;
+    const activeStoreId = config.storeId || storeIds[0] || null;
     const activeStore = stores.find((store) => asString(store.id) === activeStoreId);
     const finishedAt = new Date();
     await saveSyncState({ merchantId: asString(merchant.id), merchantName: asString(merchant.name), activeStoreId, activeStoreName: asString(activeStore?.name), catalogSyncedAt: finishedAt, lastSyncFinishedAt: finishedAt, lastSyncStatus: "success", lastSyncError: null });
@@ -347,7 +360,7 @@ export async function syncLoyverseCatalog() {
 }
 
 export async function syncLoyverseSales(range: SyncDateRange = {}) {
-  ensureConfigured();
+  await ensureConfigured();
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
   try {
@@ -397,6 +410,7 @@ function madridDate(date: Date | null) {
 }
 
 export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: string) {
+  const runtimeConfig = await getRuntimeConfig();
   const database = requireDb();
   const receiptWhere = dateRangeWhere(range);
   const receipts = await database.select().from(loyverseReceipts).where(receiptWhere).orderBy(desc(loyverseReceipts.receiptDate)).limit(5000);
@@ -444,7 +458,7 @@ export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: 
     const dayPrevious = dayMap.get(date) || { date, tickets: 0, total: 0 }; dayPrevious.tickets += 1; dayPrevious.total += Number(receipt.totalMoney); dayMap.set(date, dayPrevious);
   });
   return {
-    configured: Boolean(getToken()),
+    configured: Boolean(runtimeConfig.token),
     selectedStoreId,
     stores,
     catalog,

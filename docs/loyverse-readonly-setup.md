@@ -12,13 +12,13 @@ LOYVERSE_API_TOKEN=TOKEN_NUEVO_GENERADO_EN_LOYVERSE
 LOYVERSE_STORE_ID=
 ```
 
-`LOYVERSE_STORE_ID` es opcional. Si se deja vacío, la aplicación selecciona la primera tienda devuelta por Loyverse. Si la cuenta tiene varias tiendas, es preferible indicar el UUID de la tienda que corresponde a Sweet & Salty.
+`LOYVERSE_STORE_ID` es opcional. Si se deja vacío, la aplicación selecciona la primera tienda devuelta por Loyverse. Si la cuenta tiene varias tiendas, es preferible indicar el UUID de la tienda que corresponde a Sweet & Salty. Como alternativa, la credencial se puede guardar desde **Administración → Loyverse → Conexión segura**; esta configuración se almacena en `pos_settings` y tiene prioridad sobre las variables de entorno.
 
 Antes de probar la integración, revoca cualquier ficha que haya aparecido en una captura o mensaje y genera una nueva. No pongas el token en `VITE_*`, en React, en el repositorio, en una URL ni en un log.
 
 ## Migración
 
-Aplica `drizzle/0010_brown_ultron.sql` en la base `sweet-salty` mediante phpMyAdmin. La migración crea únicamente las tablas `pos_loyverse_*` y no modifica las tablas de productos, ventas, caja o fiscalidad del TPV.
+Aplica `drizzle/0010_brown_ultron.sql` en la base `sweet-salty` mediante phpMyAdmin si todavía no has creado las tablas `pos_loyverse_*`. Aplica después `drizzle/0011_petite_payback.sql`, que añade a `pos_settings` los campos para guardar la URL, el token y la tienda de Loyverse. La segunda migración no borra ni modifica los valores existentes de SMTP.
 
 Después ejecuta:
 
@@ -32,10 +32,12 @@ Finalmente reinicia la aplicación Node.js desde Plesk.
 
 ## Uso desde el panel
 
-Entra en **Administración → Loyverse**. La pantalla permite:
+Entra en **Administración → Loyverse**. Primero completa **Conexión segura**, pulsa **Guardar conexión** y después **Probar conexión**. La pantalla permite:
 
 | Acción | Resultado |
 |---|---|
+| **Guardar conexión** | Guarda la URL, el token y, opcionalmente, la tienda. El token no se devuelve al navegador ni se muestra después de guardarlo. |
+| **Probar conexión** | Consulta el comercio de Loyverse sin iniciar una sincronización ni modificar datos remotos. |
 | **Catálogo y stock** | Descarga comercio, tiendas, familias, artículos, variantes, precios por tienda, imágenes remotas y niveles de stock. |
 | **Sincronizar todo** | Hace lo anterior y además descarga recibos y turnos. Se puede limitar el rango de fechas. |
 | **Tienda** | Filtra el catálogo, stock y ventas por una tienda de Loyverse. |

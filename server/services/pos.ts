@@ -585,7 +585,24 @@ export async function getPosSettings() {
     smtpFrom: settings?.smtpFrom ?? (smtp.source === "environment" ? smtp.from : null),
     smtpPasswordConfigured: Boolean(smtp.password),
     smtpSource: smtp.source,
+    loyverseApiBaseUrl: settings?.loyverseApiBaseUrl ?? process.env.LOYVERSE_API_BASE_URL ?? "https://api.loyverse.com/v1.0",
+    loyverseStoreId: settings?.loyverseStoreId ?? process.env.LOYVERSE_STORE_ID ?? null,
+    loyverseTokenConfigured: Boolean(settings?.loyverseApiToken || process.env.LOYVERSE_API_TOKEN),
+    loyverseTokenSource: settings?.loyverseApiToken ? "database" : process.env.LOYVERSE_API_TOKEN ? "environment" : "none",
   };
+}
+
+export async function updateLoyverseSettings(input: { apiBaseUrl?: string | null; apiToken?: string; clearToken?: boolean; storeId?: string | null }) {
+  const database = requireDb();
+  const current = await database.select().from(posSettings).limit(1);
+  const values: Partial<typeof posSettings.$inferInsert> = {};
+  if (input.apiBaseUrl !== undefined) values.loyverseApiBaseUrl = input.apiBaseUrl?.trim() || null;
+  if (input.storeId !== undefined) values.loyverseStoreId = input.storeId?.trim() || null;
+  if (input.clearToken) values.loyverseApiToken = null;
+  else if (input.apiToken !== undefined) values.loyverseApiToken = input.apiToken.trim() || null;
+  if (!current[0]) await database.insert(posSettings).values(values);
+  else if (Object.keys(values).length > 0) await database.update(posSettings).set(values).where(eq(posSettings.id, current[0].id));
+  return getPosSettings();
 }
 
 export async function updateSmtpSettings(input: { smtpHost?: string | null; smtpPort?: number; smtpSecure?: boolean; smtpUser?: string | null; smtpPassword?: string; clearPassword?: boolean; smtpFrom?: string | null }) {

@@ -261,6 +261,30 @@ apiRouter.patch("/admin/vat-types/:id", async (req, res, next) => {
   }
 });
 
+apiRouter.patch("/admin/settings/loyverse", async (req, res, next) => {
+  try {
+    const input = parseBody(z.object({
+      apiBaseUrl: z.preprocess((value) => value === "" ? null : value, z.string().trim().url().max(255).nullable().optional()),
+      apiToken: z.string().max(255).optional(),
+      clearToken: z.boolean().optional(),
+      storeId: z.preprocess((value) => value === "" ? null : value, z.string().trim().max(64).nullable().optional()),
+    }), req.body);
+    const { updateLoyverseSettings } = await import("./services/pos");
+    res.json(await updateLoyverseSettings(input));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/loyverse/test", async (_req, res, next) => {
+  try {
+    const { testLoyverseConnection } = await import("./services/loyverse");
+    res.json(await testLoyverseConnection());
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/admin/loyverse/status", async (_req, res, next) => {
   try {
     const { getLoyverseStatus } = await import("./services/loyverse");
