@@ -1216,6 +1216,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
     let productsUpdated = 0;
     let stockUpdated = 0;
     let skipped = 0;
+    const skippedDetails: string[] = [];
 
     for (const item of remoteItems) {
       const itemVariants = variantsByItem.get(item.loyverseId) ?? [];
@@ -1262,12 +1263,16 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
             stockUpdated += 1;
           }
         } catch (error) {
-          if (String(error).toLowerCase().includes("duplicate")) skipped += 1;
-          else throw error;
+          const errorObject = error as { message?: string; cause?: { message?: string; code?: string } };
+          const detail = [errorObject.message, errorObject.cause?.message, errorObject.cause?.code].filter(Boolean).join(" ");
+          const fatal = /unknown column|doesn't exist|no such table|access denied|connect|econn|database.*(not found|does not exist)/i.test(detail);
+          if (fatal) throw error;
+          skipped += 1;
+          if (skippedDetails.length < 20) skippedDetails.push(`${productName}: ${detail || "conflicto de datos"}`);
         }
       }
     }
-    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, skipped, storeId: availableStoreId };
+    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, skipped, skippedDetails, storeId: availableStoreId };
   });
   return { success: true, ...imported };
 }
