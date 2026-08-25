@@ -38,6 +38,192 @@ export const posSettings = mysqlTable("pos_settings", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 
+export const loyverseSyncState = mysqlTable("pos_loyverse_sync_state", {
+  id: int("id").autoincrement().primaryKey(),
+  merchantId: varchar("merchant_id", { length: 64 }),
+  merchantName: varchar("merchant_name", { length: 255 }),
+  activeStoreId: varchar("active_store_id", { length: 64 }),
+  activeStoreName: varchar("active_store_name", { length: 255 }),
+  catalogSyncedAt: datetime("catalog_synced_at", { mode: "date" }),
+  salesSyncedAt: datetime("sales_synced_at", { mode: "date" }),
+  lastSyncStartedAt: datetime("last_sync_started_at", { mode: "date" }),
+  lastSyncFinishedAt: datetime("last_sync_finished_at", { mode: "date" }),
+  lastSyncStatus: mysqlEnum("last_sync_status", ["idle", "running", "success", "error"]).notNull().default("idle"),
+  lastSyncError: text("last_sync_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export const loyverseStores = mysqlTable("pos_loyverse_stores", {
+  id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  timezone: varchar("timezone", { length: 64 }),
+  deletedAt: datetime("deleted_at", { mode: "date" }),
+  remoteCreatedAt: datetime("remote_created_at", { mode: "date" }),
+  remoteUpdatedAt: datetime("remote_updated_at", { mode: "date" }),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_stores_loyverse_id_unique").on(table.loyverseId),
+]);
+
+export const loyverseCategories = mysqlTable("pos_loyverse_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  color: varchar("color", { length: 32 }),
+  deletedAt: datetime("deleted_at", { mode: "date" }),
+  remoteCreatedAt: datetime("remote_created_at", { mode: "date" }),
+  remoteUpdatedAt: datetime("remote_updated_at", { mode: "date" }),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_categories_loyverse_id_unique").on(table.loyverseId),
+]);
+
+export const loyverseItems = mysqlTable("pos_loyverse_items", {
+  id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),
+  itemName: varchar("item_name", { length: 255 }).notNull(),
+  referenceId: varchar("reference_id", { length: 255 }),
+  categoryLoyverseId: varchar("category_loyverse_id", { length: 64 }),
+  imageUrl: text("image_url"),
+  trackStock: boolean("track_stock").notNull().default(false),
+  soldByWeight: boolean("sold_by_weight").notNull().default(false),
+  isComposite: boolean("is_composite").notNull().default(false),
+  deletedAt: datetime("deleted_at", { mode: "date" }),
+  remoteCreatedAt: datetime("remote_created_at", { mode: "date" }),
+  remoteUpdatedAt: datetime("remote_updated_at", { mode: "date" }),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_items_loyverse_id_unique").on(table.loyverseId),
+  index("pos_loyverse_items_name_index").on(table.itemName),
+]);
+
+export const loyverseVariants = mysqlTable("pos_loyverse_variants", {
+  id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),
+  itemLoyverseId: varchar("item_loyverse_id", { length: 64 }).notNull(),
+  sku: varchar("sku", { length: 255 }),
+  barcode: varchar("barcode", { length: 255 }),
+  option1Value: varchar("option1_value", { length: 255 }),
+  option2Value: varchar("option2_value", { length: 255 }),
+  option3Value: varchar("option3_value", { length: 255 }),
+  cost: decimal("cost", { precision: 12, scale: 2 }),
+  purchaseCost: decimal("purchase_cost", { precision: 12, scale: 2 }),
+  defaultPrice: decimal("default_price", { precision: 12, scale: 2 }),
+  deletedAt: datetime("deleted_at", { mode: "date" }),
+  remoteCreatedAt: datetime("remote_created_at", { mode: "date" }),
+  remoteUpdatedAt: datetime("remote_updated_at", { mode: "date" }),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_variants_loyverse_id_unique").on(table.loyverseId),
+  index("pos_loyverse_variants_item_index").on(table.itemLoyverseId),
+]);
+
+export const loyverseVariantPrices = mysqlTable("pos_loyverse_variant_prices", {
+  id: int("id").autoincrement().primaryKey(),
+  variantLoyverseId: varchar("variant_loyverse_id", { length: 64 }).notNull(),
+  storeLoyverseId: varchar("store_loyverse_id", { length: 64 }).notNull(),
+  pricingType: varchar("pricing_type", { length: 32 }),
+  price: decimal("price", { precision: 12, scale: 2 }),
+  availableForSale: boolean("available_for_sale").notNull().default(true),
+  optimalStock: decimal("optimal_stock", { precision: 12, scale: 3 }),
+  lowStock: decimal("low_stock", { precision: 12, scale: 3 }),
+  rawData: json("raw_data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_variant_prices_unique").on(table.variantLoyverseId, table.storeLoyverseId),
+]);
+
+export const loyverseInventoryLevels = mysqlTable("pos_loyverse_inventory_levels", {
+  id: int("id").autoincrement().primaryKey(),
+  variantLoyverseId: varchar("variant_loyverse_id", { length: 64 }).notNull(),
+  storeLoyverseId: varchar("store_loyverse_id", { length: 64 }).notNull(),
+  inStock: decimal("in_stock", { precision: 12, scale: 3 }).notNull().default("0.000"),
+  remoteUpdatedAt: datetime("remote_updated_at", { mode: "date" }),
+  rawData: json("raw_data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_inventory_levels_unique").on(table.variantLoyverseId, table.storeLoyverseId),
+]);
+
+export const loyverseReceipts = mysqlTable("pos_loyverse_receipts", {
+  id: int("id").autoincrement().primaryKey(),
+  receiptNumber: varchar("receipt_number", { length: 64 }).notNull(),
+  storeLoyverseId: varchar("store_loyverse_id", { length: 64 }),
+  receiptType: varchar("receipt_type", { length: 32 }),
+  refundFor: varchar("refund_for", { length: 64 }),
+  receiptDate: datetime("receipt_date", { mode: "date" }),
+  cancelledAt: datetime("cancelled_at", { mode: "date" }),
+  totalMoney: decimal("total_money", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalTax: decimal("total_tax", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalDiscount: decimal("total_discount", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_receipts_number_unique").on(table.receiptNumber),
+  index("pos_loyverse_receipts_date_index").on(table.receiptDate),
+]);
+
+export const loyverseReceiptLines = mysqlTable("pos_loyverse_receipt_lines", {
+  id: int("id").autoincrement().primaryKey(),
+  receiptId: int("receipt_id").notNull(),
+  lineIndex: int("line_index").notNull(),
+  itemLoyverseId: varchar("item_loyverse_id", { length: 64 }),
+  variantLoyverseId: varchar("variant_loyverse_id", { length: 64 }),
+  itemName: varchar("item_name", { length: 255 }).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull().default("0.000"),
+  price: decimal("price", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  grossTotalMoney: decimal("gross_total_money", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalMoney: decimal("total_money", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  cost: decimal("cost", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  costTotal: decimal("cost_total", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_receipt_lines_unique").on(table.receiptId, table.lineIndex),
+]);
+
+export const loyverseReceiptPayments = mysqlTable("pos_loyverse_receipt_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  receiptId: int("receipt_id").notNull(),
+  paymentIndex: int("payment_index").notNull(),
+  paymentTypeId: varchar("payment_type_id", { length: 64 }),
+  moneyAmount: decimal("money_amount", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_receipt_payments_unique").on(table.receiptId, table.paymentIndex),
+]);
+
+export const loyverseShifts = mysqlTable("pos_loyverse_shifts", {
+  id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),
+  storeLoyverseId: varchar("store_loyverse_id", { length: 64 }),
+  openedAt: datetime("opened_at", { mode: "date" }),
+  closedAt: datetime("closed_at", { mode: "date" }),
+  startingCash: decimal("starting_cash", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  cashPayments: decimal("cash_payments", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  cashRefunds: decimal("cash_refunds", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  paidIn: decimal("paid_in", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  paidOut: decimal("paid_out", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_shifts_loyverse_id_unique").on(table.loyverseId),
+  index("pos_loyverse_shifts_closed_index").on(table.closedAt),
+]);
+
 export const fiscalProfiles = mysqlTable("pos_fiscal_profiles", {
   id: int("id").autoincrement().primaryKey(),
   commercialName: varchar("commercial_name", { length: 160 }).notNull().default("Sweet & Salty"),

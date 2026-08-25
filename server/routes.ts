@@ -261,6 +261,67 @@ apiRouter.patch("/admin/vat-types/:id", async (req, res, next) => {
   }
 });
 
+apiRouter.get("/admin/loyverse/status", async (_req, res, next) => {
+  try {
+    const { getLoyverseStatus } = await import("./services/loyverse");
+    res.json(await getLoyverseStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/admin/loyverse/dashboard", async (req, res, next) => {
+  try {
+    const parseDate = (value: unknown) => typeof value === "string" && value ? new Date(value) : undefined;
+    const from = parseDate(req.query.from);
+    const to = parseDate(req.query.to);
+    if (from && Number.isNaN(from.getTime())) throw new Error("La fecha inicial de Loyverse no es válida.");
+    if (to && Number.isNaN(to.getTime())) throw new Error("La fecha final de Loyverse no es válida.");
+    const storeId = typeof req.query.storeId === "string" ? req.query.storeId : undefined;
+    const { getLoyverseDashboard } = await import("./services/loyverse");
+    res.json(await getLoyverseDashboard({ from, to }, storeId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/loyverse/sync/catalog", async (_req, res, next) => {
+  try {
+    const { syncLoyverseCatalog } = await import("./services/loyverse");
+    res.json(await syncLoyverseCatalog());
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/loyverse/sync/sales", async (req, res, next) => {
+  try {
+    const parseDate = (value: unknown) => typeof value === "string" && value ? new Date(value) : undefined;
+    const from = parseDate(req.body?.from);
+    const to = parseDate(req.body?.to);
+    if (from && Number.isNaN(from.getTime())) throw new Error("La fecha inicial de Loyverse no es válida.");
+    if (to && Number.isNaN(to.getTime())) throw new Error("La fecha final de Loyverse no es válida.");
+    const { syncLoyverseSales } = await import("./services/loyverse");
+    res.json(await syncLoyverseSales({ from, to }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post("/admin/loyverse/sync", async (req, res, next) => {
+  try {
+    const parseDate = (value: unknown) => typeof value === "string" && value ? new Date(value) : undefined;
+    const from = parseDate(req.body?.from);
+    const to = parseDate(req.body?.to);
+    if (from && Number.isNaN(from.getTime())) throw new Error("La fecha inicial de Loyverse no es válida.");
+    if (to && Number.isNaN(to.getTime())) throw new Error("La fecha final de Loyverse no es válida.");
+    const { syncLoyverseAll } = await import("./services/loyverse");
+    res.json(await syncLoyverseAll({ from, to }));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/admin/settings", async (_req, res, next) => {
   try {
     const { getPosSettings } = await import("./services/pos");

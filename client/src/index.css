@@ -253,3 +253,34 @@ button:disabled { cursor: not-allowed; }
 .post-sale-close-button { min-width: 132px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: none; padding: 0 16px; border: 1px solid #cfdccf; border-radius: 10px; color: #45654d; background: #f6faf5; font-size: 12px; font-weight: 900; letter-spacing: .2px; }
 .post-sale-close-button:hover { border-color: #9fc3a5; color: #2f623d; background: #eaf6e9; }
 @media (max-width:480px) { .post-sale-close-area { align-items: stretch; flex-direction: column; }.post-sale-close-button { width: 100%; } }
+
+/* Integración Loyverse en modo lectura */
+.loyverse-notice { margin-bottom: 16px; }
+.loyverse-connection-card { border-color: #cfe1d1; background: #fbfef9; }
+.loyverse-count-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin-bottom: 18px; }
+.loyverse-count-grid > div { min-height: 76px; display: flex; flex-direction: column; justify-content: space-between; padding: 11px; border: 1px solid #e3ece2; border-radius: 10px; color: #5d7d64; background: #fff; }
+.loyverse-count-grid strong { color: #315c3b; font-family: "DM Mono",monospace; font-size: 20px; }
+.loyverse-count-grid small { color: #91a092; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.loyverse-sync-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 16px; border-top: 1px solid #e3ece2; }
+.loyverse-sync-panel > div:first-child { display: grid; gap: 4px; }
+.loyverse-sync-panel strong { color: #3c5e43; font-size: 12px; }
+.loyverse-sync-panel small { color: #91a092; font-size: 10px; }
+.loyverse-sync-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.loyverse-error-text { color: #b44e40 !important; }
+.loyverse-filters { margin-top: 16px; }
+.loyverse-filter-grid { display: grid; grid-template-columns: 1.3fr .8fr .8fr 1.4fr; align-items: end; gap: 12px; }
+.loyverse-filter-grid label { display: grid; gap: 6px; color: #648069; font-size: 10px; font-weight: 800; }
+.loyverse-filter-grid input,.loyverse-filter-grid select { min-height: 36px; padding: 0 10px; border: 1px solid #dbe6db; border-radius: 8px; outline: none; color: #2b4933; background: #fff; font-size: 12px; }
+.loyverse-filter-hint { min-height: 36px; display: flex; align-items: center; gap: 8px; color: #8b998e; font-size: 10px; line-height: 1.35; }
+.loyverse-filter-hint svg { flex: none; color: #5e9669; }
+.loyverse-metrics { margin-top: 16px; }
+.loyverse-chart-card { min-height: 315px; }
+.loyverse-catalog-table { min-width: 850px; }
+.loyverse-catalog-table td:first-child { width: 48px; padding-right: 0; }
+.loyverse-image-thumb,.loyverse-image-placeholder { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 7px; color: #79927e; background: #edf5ec; }
+.loyverse-image-thumb { object-fit: cover; }
+.loyverse-empty { display: grid; justify-items: center; gap: 7px; }
+.loyverse-empty strong { color: #47674d; font-size: 13px; }
+.loyverse-empty span { color: #9aa89c; font-size: 11px; }
+@media (max-width:900px) { .loyverse-count-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.loyverse-filter-grid { grid-template-columns: 1fr 1fr; }.loyverse-filter-hint { grid-column: 1 / -1; } }
+@media (max-width:600px) { .loyverse-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.loyverse-sync-panel { align-items: stretch; flex-direction: column; }.loyverse-sync-actions { justify-content: stretch; }.loyverse-sync-actions button { flex: 1; }.loyverse-filter-grid { grid-template-columns: 1fr; }.loyverse-filter-hint { grid-column: auto; }.loyverse-metrics { grid-template-columns: 1fr 1fr; } }
