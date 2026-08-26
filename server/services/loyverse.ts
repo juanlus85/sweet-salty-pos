@@ -572,18 +572,22 @@ export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: 
   const totalTax = selectedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalTax), 0);
   const totalDiscount = selectedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalDiscount), 0);
   const totalCost = selectedLines.reduce((sum, line) => sum + Number(line.costTotal), 0);
+  const costByReceipt = new Map<number, number>();
+  for (const line of selectedLines) costByReceipt.set(line.receiptId, (costByReceipt.get(line.receiptId) ?? 0) + Number(line.costTotal));
   const topProductsMap = new Map<string, { productName: string; units: number; revenue: number; cost: number }>();
-  const hourMap = new Map<string, { hour: string; tickets: number; total: number }>();
-  const dayMap = new Map<string, { date: string; tickets: number; total: number }>();
+  const hourMap = new Map<string, { hour: string; tickets: number; total: number; cost: number; cash: number; card: number }>();
+  const dayMap = new Map<string, { date: string; tickets: number; total: number; cost: number; cash: number; card: number }>();
   selectedLines.forEach((line) => {
     const previous = topProductsMap.get(line.itemName) || { productName: line.itemName, units: 0, revenue: 0, cost: 0 };
     previous.units += Number(line.quantity); previous.revenue += Number(line.totalMoney); previous.cost += Number(line.costTotal); topProductsMap.set(line.itemName, previous);
   });
   selectedReceipts.forEach((receipt) => {
     const hour = madridHour(receipt.receiptDate);
-    const hourPrevious = hourMap.get(hour) || { hour, tickets: 0, total: 0 }; hourPrevious.tickets += 1; hourPrevious.total += Number(receipt.totalMoney); hourMap.set(hour, hourPrevious);
-    const date = madridDate(receipt.receiptDate);
-    const dayPrevious = dayMap.get(date) || { date, tickets: 0, total: 0 }; dayPrevious.tickets += 1; dayPrevious.total += Number(receipt.totalMoney); dayMap.set(date, dayPrevious);
+    const receiptCost = costByReceipt.get(receipt.id) ?? 0;
+    const method = unifiedPaymentMethod(receipt.id, allPayments);
+    const hourPrevious = hourMap.get(hour) || { hour, tickets: 0, total: 0, cost: 0, cash: 0, card: 0 }; hourPrevious.tickets += 1; hourPrevious.total += Number(receipt.totalMoney); hourPrevious.cost += receiptCost; if (method === "cash") hourPrevious.cash += Number(receipt.totalMoney); if (method === "card") hourPrevious.card += Number(receipt.totalMoney); hourMap.set(hour, hourPrevious);
+    const date = madridBusinessDate(receipt.receiptDate || new Date());
+    const dayPrevious = dayMap.get(date) || { date, tickets: 0, total: 0, cost: 0, cash: 0, card: 0 }; dayPrevious.tickets += 1; dayPrevious.total += Number(receipt.totalMoney); dayPrevious.cost += receiptCost; if (method === "cash") dayPrevious.cash += Number(receipt.totalMoney); if (method === "card") dayPrevious.card += Number(receipt.totalMoney); dayMap.set(date, dayPrevious);
   });
   return {
     configured: Boolean(runtimeConfig.token),
@@ -602,19 +606,37 @@ export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: 
 
 type UnifiedReportRange = { from?: Date; to?: Date };
 
-function unifiedMoney(value: number) { return value.toFixed(2); }
+type UnifiedReportGroup = "auto" | "hour" | "day" | "week" | "month";
 
-function unifiedRange(period = "quarter", from?: string, to?: string): UnifiedReportRange {
-  if (period === "custom" && from && to) return { from: new Date(`${from}T00:00:00Z`), to: new Date(`${to}T23:59:59Z`) };
-  const end = new Date();
-  const start = new Date(end);
-  if (period === "day") start.setDate(end.getDate());
-  else if (period === "week") start.setDate(end.getDate() - 6);
-  else if (period === "month") start.setDate(1);
-  else if (period === "year") { start.setMonth(0, 1); }
-  else { start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1); }
-  start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999);
-  return { from: start, to: end };
+function unifiedMoney(value: number) { return value.toFixed(2); }
+function madridParts(date: Date) {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(date).reduce<Record<string, string>>((parts, part) => { parts[part.type] = part.value; return parts; }, {});
+}
+function madridBusinessDate(date = new Date()) {
+  const parts = madridParts(date);
+  const calendarDate = `${parts.year}-${parts.month}-${parts.day}`;
+  return Number(parts.hour) < 7 ? shiftCalendarDate(calendarDate, -1) : calendarDate;
+}
+function shiftCalendarDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+function madridBoundary(date: string, hour: number) {
+  const target = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00Z`);
+  const parts = madridParts(target);
+  const observed = new Date(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`);
+  return new Date(target.getTime() + target.getTime() - observed.getTime());
+}
+function unifiedWeekStart(date: string) {
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return shiftCalendarDate(date, -(weekday === 0 ? 6 : weekday - 1));
+}
+
+function unifiedRange(period = "day", from?: string, to?: string): UnifiedReportRange {
+  const today = madridBusinessDate();
+  const range = period === "custom" && from && to ? { from, to } : period === "day" ? { from: today, to: today } : period === "week" ? { from: shiftCalendarDate(today, -(new Date(`${today}T12:00:00Z`).getUTCDay() === 0 ? 6 : new Date(`${today}T12:00:00Z`).getUTCDay() - 1)), to: today } : period === "month" ? { from: `${today.slice(0, 7)}-01`, to: today } : period === "year" ? { from: `${today.slice(0, 4)}-01-01`, to: today } : { from: `${today.slice(0, 4)}-${String(Math.floor((Number(today.slice(5, 7)) - 1) / 3) * 3 + 1).padStart(2, "0")}-01`, to: today };
+  return { from: madridBoundary(range.from, 7), to: new Date(madridBoundary(shiftCalendarDate(range.to, 1), 7).getTime() - 1) };
 }
 
 function unifiedPaymentMethod(receiptId: number, payments: typeof loyverseReceiptPayments.$inferSelect[]) {
@@ -652,18 +674,47 @@ export async function getLoyverseReceiptDetails(receiptId: number) {
   return { ...receipt, saleNumber: receipt.receiptNumber, totalAmount: receipt.totalMoney, subtotal: unifiedMoney(Number(receipt.totalMoney) - Number(receipt.totalTax)), vatAmount: receipt.totalTax, status: receipt.receiptType === "REFUND" ? "refunded" : "completed", createdAt: (receipt.receiptDate || receipt.updatedAt || receipt.createdAt).toISOString(), payment: { method: unifiedPaymentMethod(receipt.id, payments), amount: receipt.totalMoney }, lines: lines.map((line) => ({ id: line.id, productName: line.itemName, quantity: line.quantity, unitPrice: line.price, lineVat: "0.00", lineTotal: line.totalMoney })) };
 }
 
-export async function getLoyverseReports(input: { period?: string; from?: string; to?: string } = {}) {
-  const period = input.period || "quarter";
+function unifiedAutoGroup(period: string, range: UnifiedReportRange): Exclude<UnifiedReportGroup, "auto"> {
+  if (period === "day") return "hour";
+  if (period === "week") return "day";
+  const from = range.from ? madridBusinessDate(range.from) : madridBusinessDate();
+  const to = range.to ? madridBusinessDate(range.to) : from;
+  const spanDays = Math.max(1, Math.round((new Date(`${to}T12:00:00Z`).getTime() - new Date(`${from}T12:00:00Z`).getTime()) / 86400000) + 1);
+  if (spanDays <= 1) return "hour";
+  if (spanDays <= 14) return "day";
+  return "month";
+}
+
+function unifiedHourOrder(hour: number) { return (hour + 17) % 24; }
+function trimUnifiedHourlySeries<T extends { hour: number; tickets: number }>(rows: T[]) {
+  const byHour = new Map(rows.map((row) => [row.hour, row]));
+  const active = rows.filter((row) => row.tickets > 0).sort((left, right) => unifiedHourOrder(left.hour) - unifiedHourOrder(right.hour));
+  if (!active.length) return [];
+  const start = unifiedHourOrder(active[0].hour);
+  const end = unifiedHourOrder(active[active.length - 1].hour);
+  return Array.from({ length: end - start + 1 }, (_, index) => {
+    const hour = (start + index + 7) % 24;
+    return byHour.get(hour) ?? ({ hour, tickets: 0 } as T);
+  });
+}
+
+export async function getLoyverseReports(input: { period?: string; from?: string; to?: string; group?: UnifiedReportGroup } = {}) {
+  const period = input.period || "day";
   const range = unifiedRange(period, input.from, input.to);
   const dashboard = await getLoyverseDashboard(range);
   const sales = dashboard.sales;
   const totalSold = Number(sales.totalSold);
   const totalTax = Number(sales.totalTax);
   const totalCost = Number(sales.totalCost);
+  const effectiveGroup: Exclude<UnifiedReportGroup, "auto"> = input.group && input.group !== "auto" ? input.group : unifiedAutoGroup(period, range);
+  const rawSeries = effectiveGroup === "hour" ? sales.byHour.map((entry) => ({ hour: Number(entry.hour), label: entry.hour, total: Number(entry.total), tickets: entry.tickets, cash: Number(entry.cash), card: Number(entry.card), cost: Number(entry.cost) })) : sales.byDate.map((entry) => ({ label: effectiveGroup === "month" ? entry.date.slice(0, 7) : effectiveGroup === "week" ? unifiedWeekStart(entry.date) : entry.date, total: Number(entry.total), tickets: entry.tickets, cash: Number(entry.cash), card: Number(entry.card), cost: Number(entry.cost) }));
+  const groupedSeries = rawSeries.reduce((rows, entry) => { const current = rows.find((row) => row.label === entry.label); if (current) { current.total += entry.total; current.tickets += entry.tickets; current.cash += entry.cash; current.card += entry.card; current.cost += entry.cost; } else rows.push({ label: entry.label, total: entry.total, tickets: entry.tickets, cash: entry.cash, card: entry.card, cost: entry.cost }); return rows; }, [] as Array<{ label: string; total: number; tickets: number; cash: number; card: number; cost: number }>);
+  const orderedSeries = effectiveGroup === "hour" ? trimUnifiedHourlySeries(groupedSeries.map((entry) => ({ ...entry, hour: Number(entry.label.slice(0, 2)) }))).map((entry) => ({ label: entry.label, total: entry.total, tickets: entry.tickets, cash: entry.cash, card: entry.card, cost: entry.cost })) : groupedSeries.sort((left, right) => left.label.localeCompare(right.label));
   return {
-    period, from: range.from?.toISOString().slice(0, 10) || null, to: range.to?.toISOString().slice(0, 10) || null,
+    period, from: range.from ? madridBusinessDate(range.from) : null, to: range.to ? madridBusinessDate(new Date(range.to.getTime() - 1)) : null,
     totals: { totalSold: unifiedMoney(totalSold), subtotal: unifiedMoney(totalSold - totalTax), vat: unifiedMoney(totalTax), cash: unifiedMoney(Number(sales.cash || 0)), card: unifiedMoney(Number(sales.card || 0)), cost: unifiedMoney(totalCost), margin: unifiedMoney(totalSold - totalCost), tickets: sales.tickets },
-    series: sales.byDate.map((entry) => ({ label: entry.date, total: unifiedMoney(Number(entry.total)), tickets: entry.tickets, cash: "0.00", card: "0.00" })),
+    group: effectiveGroup,
+    series: orderedSeries.map((entry) => ({ label: entry.label, total: unifiedMoney(entry.total), tickets: entry.tickets, cash: unifiedMoney(entry.cash), card: unifiedMoney(entry.card), cost: unifiedMoney(entry.cost), margin: unifiedMoney(entry.total - entry.cost) })),
     topProducts: sales.topProducts.map((entry) => ({ productId: null, productName: entry.productName, units: Number(entry.units).toFixed(3), revenue: unifiedMoney(Number(entry.revenue)), cost: unifiedMoney(Number(entry.cost)), margin: unifiedMoney(Number(entry.revenue) - Number(entry.cost)) })),
     byFamily: (() => {
       const familyMap = new Map<string, { units: number; revenue: number; cost: number }>();
@@ -685,19 +736,22 @@ export async function getLoyverseSalesByProduct() {
 
 export async function getLoyverseDailyAnalysis() {
   const report = await getLoyverseReports({ period: "day" });
-  return { businessDate: new Date().toISOString().slice(0, 10), sessionId: 0, status: "open" as const, totalSold: report.totals.totalSold, cashSold: report.totals.cash, cardSold: report.totals.card, expectedCash: report.totals.cash, tickets: report.totals.tickets, hourly: report.series.map((entry) => ({ hour: 0, label: entry.label, total: entry.total, tickets: entry.tickets, cash: entry.cash, card: entry.card })), topProducts: report.topProducts.slice(0, 10) };
+  return { businessDate: madridBusinessDate(), sessionId: 0, status: "open" as const, totalSold: report.totals.totalSold, cashSold: report.totals.cash, cardSold: report.totals.card, expectedCash: report.totals.cash, tickets: report.totals.tickets, hourly: report.series.map((entry) => ({ hour: Number(entry.label.slice(0, 2)), label: entry.label, total: entry.total, tickets: entry.tickets, cash: entry.cash, card: entry.card })), topProducts: report.topProducts.slice(0, 10) };
 }
 
 
 function mergeMoney(left: string | number, right: string | number) { return (Number(left) + Number(right)).toFixed(2); }
 
-function mergeSeriesRows(remote: Array<{ label: string; total: string; tickets: number; cash: string; card: string }>, local: Array<{ label: string; total: string; tickets: number; cash: string; card: string }>) {
-  const map = new Map<string, { label: string; total: number; tickets: number; cash: number; card: number }>();
+function mergeSeriesRows(remote: Array<{ label: string; total: string; tickets: number; cash: string; card: string; cost?: string; margin?: string }>, local: Array<{ label: string; total: string; tickets: number; cash: string; card: string; cost?: string; margin?: string }>, group: Exclude<UnifiedReportGroup, "auto">) {
+  const map = new Map<string, { label: string; total: number; tickets: number; cash: number; card: number; cost: number }>();
   for (const row of [...remote, ...local]) {
-    const current = map.get(row.label) || { label: row.label, total: 0, tickets: 0, cash: 0, card: 0 };
-    current.total += Number(row.total); current.tickets += row.tickets; current.cash += Number(row.cash); current.card += Number(row.card); map.set(row.label, current);
+    const current = map.get(row.label) || { label: row.label, total: 0, tickets: 0, cash: 0, card: 0, cost: 0 };
+    current.total += Number(row.total); current.tickets += row.tickets; current.cash += Number(row.cash); current.card += Number(row.card); current.cost += Number(row.cost ?? 0); map.set(row.label, current);
   }
-  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label)).map((row) => ({ ...row, total: row.total.toFixed(2), cash: row.cash.toFixed(2), card: row.card.toFixed(2) }));
+  const rows = [...map.values()];
+  if (group === "hour") rows.sort((left, right) => unifiedHourOrder(Number(left.label.slice(0, 2))) - unifiedHourOrder(Number(right.label.slice(0, 2))));
+  else rows.sort((left, right) => left.label.localeCompare(right.label));
+  return rows.map((row) => ({ label: row.label, total: row.total.toFixed(2), tickets: row.tickets, cash: row.cash.toFixed(2), card: row.card.toFixed(2), cost: row.cost.toFixed(2), margin: (row.total - row.cost).toFixed(2) }));
 }
 
 function mergeProductRows(remote: Array<{ productId: number | null; productName: string; units: string; revenue: string; cost: string; margin: string }>, local: Array<{ productId: number | null; productName: string; units: string; revenue: string; cost: string; margin: string }>) {
@@ -720,17 +774,18 @@ function mergeFamilyRows(remote: Array<{ family: string; units: string; revenue:
   return [...map.values()].sort((a, b) => b.revenue - a.revenue).map((row) => ({ family: row.family, units: row.units.toFixed(3), revenue: row.revenue.toFixed(2), cost: row.cost.toFixed(2), margin: (row.revenue - row.cost).toFixed(2) }));
 }
 
-export async function getCombinedReports(input: { period?: string; from?: string; to?: string; source?: "all" | "loyverse" | "local" } = {}) {
+export async function getCombinedReports(input: { period?: string; from?: string; to?: string; source?: "all" | "loyverse" | "local"; group?: UnifiedReportGroup } = {}) {
   const source = input.source || "all";
-  const emptyReport = { period: input.period || "quarter", from: input.from || null, to: input.to || null, totals: { totalSold: "0.00", subtotal: "0.00", vat: "0.00", cash: "0.00", card: "0.00", cost: "0.00", margin: "0.00", tickets: 0 }, series: [], topProducts: [], byFamily: [], vatBreakdown: [] };
+  const emptyReport = { period: input.period || "day", group: input.group && input.group !== "auto" ? input.group : undefined, from: input.from || null, to: input.to || null, totals: { totalSold: "0.00", subtotal: "0.00", vat: "0.00", cash: "0.00", card: "0.00", cost: "0.00", margin: "0.00", tickets: 0 }, series: [], topProducts: [], byFamily: [], vatBreakdown: [] };
   const [{ getReports }, remote] = await Promise.all([import("./pos"), source === "local" ? Promise.resolve(emptyReport) : getLoyverseReports(input)]);
   const local = source === "loyverse" ? emptyReport : await getReports(input);
+  const group = (remote.group || local.group || "hour") as Exclude<UnifiedReportGroup, "auto">;
   return {
-    period: remote.period, from: remote.from || local.from, to: remote.to || local.to,
+    period: remote.period, group, from: remote.from || local.from, to: remote.to || local.to,
     totals: {
       totalSold: mergeMoney(remote.totals.totalSold, local.totals.totalSold), subtotal: mergeMoney(remote.totals.subtotal, local.totals.subtotal), vat: mergeMoney(remote.totals.vat, local.totals.vat), cash: mergeMoney(remote.totals.cash, local.totals.cash), card: mergeMoney(remote.totals.card, local.totals.card), cost: mergeMoney(remote.totals.cost, local.totals.cost), margin: mergeMoney(remote.totals.margin, local.totals.margin), tickets: remote.totals.tickets + local.totals.tickets,
     },
-    series: mergeSeriesRows(remote.series, local.series),
+    series: mergeSeriesRows(remote.series, local.series, group),
     topProducts: mergeProductRows(remote.topProducts, local.topProducts),
     byFamily: mergeFamilyRows(remote.byFamily, local.byFamily),
     vatBreakdown: [...remote.vatBreakdown, ...local.vatBreakdown],

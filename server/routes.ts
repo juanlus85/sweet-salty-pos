@@ -165,8 +165,9 @@ apiRouter.get("/admin/reports", async (req, res, next) => {
     const from = typeof req.query.from === "string" ? req.query.from : undefined;
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
     const source = req.query.source === "loyverse" || req.query.source === "local" ? req.query.source : "all";
+    const group = req.query.group === "hour" || req.query.group === "day" || req.query.group === "week" || req.query.group === "month" ? req.query.group : "auto";
     const { getCombinedReports } = await import("./services/loyverse");
-    res.json(await getCombinedReports({ period, from, to, source }));
+    res.json(await getCombinedReports({ period, from, to, source, group }));
   } catch (error) {
     next(error);
   }

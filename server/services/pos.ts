@@ -1082,6 +1082,46 @@ function shiftBusinessDate(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
+type ReportGroup = "auto" | "hour" | "day" | "week" | "month";
+
+function reportGroup(period: string, from: string, to: string, requested: ReportGroup = "auto"): Exclude<ReportGroup, "auto"> {
+  if (requested !== "auto") return requested;
+  const fromDate = new Date(`${from}T12:00:00Z`).getTime();
+  const toDate = new Date(`${to}T12:00:00Z`).getTime();
+  const spanDays = Number.isFinite(fromDate) && Number.isFinite(toDate) ? Math.max(1, Math.round((toDate - fromDate) / 86400000) + 1) : 1;
+  if (period === "day" || spanDays <= 1) return "hour";
+  if (period === "week" || spanDays <= 14) return "day";
+  return "month";
+}
+
+function madridHourNumber(date: Date | null) {
+  if (!date) return null;
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid", hour: "2-digit", hourCycle: "h23" }).format(date));
+  return Number.isFinite(hour) ? hour : null;
+}
+
+function hourOrder(hour: number) { return (hour + 17) % 24; }
+function hourLabel(hour: number) { return `${String(hour).padStart(2, "0")}:00`; }
+
+function reportWeekStart(date: string) {
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  return shiftBusinessDate(date, mondayOffset);
+}
+
+function trimHourlySeries<T extends { hour: number; tickets: number }>(rows: T[]) {
+  const byHour = new Map(rows.map((row) => [row.hour, row]));
+  const active = rows.filter((row) => row.tickets > 0).sort((a, b) => hourOrder(a.hour) - hourOrder(b.hour));
+  if (!active.length) return [];
+  const start = hourOrder(active[0].hour);
+  const end = hourOrder(active[active.length - 1].hour);
+  const count = end >= start ? end - start + 1 : 24 - start + end + 1;
+  return Array.from({ length: count }, (_, index) => {
+    const hour = (start + index + 7) % 24;
+    return byHour.get(hour) ?? ({ hour, tickets: 0 } as T);
+  });
+}
+
 function reportRange(period: string, customFrom?: string, customTo?: string) {
   const today = getBusinessDate();
   if (period === "custom" && customFrom && customTo) return { from: customFrom, to: customTo };
@@ -1101,10 +1141,11 @@ function reportRange(period: string, customFrom?: string, customTo?: string) {
   return { from: `${today.slice(0, 4)}-${String(quarterStart).padStart(2, "0")}-01`, to: today };
 }
 
-export async function getReports(input: { period?: string; from?: string; to?: string } = {}) {
+export async function getReports(input: { period?: string; from?: string; to?: string; group?: ReportGroup } = {}) {
   const database = requireDb();
-  const period = input.period ?? "quarter";
+  const period = input.period ?? "day";
   const range = reportRange(period, input.from, input.to);
+  const group = reportGroup(period, range.from, range.to, input.group);
   const salesRows = await database
     .select({ id: sales.id, businessDate: cashSessions.businessDate, totalAmount: sales.totalAmount, subtotal: sales.subtotal, vatAmount: sales.vatAmount, createdAt: sales.createdAt, method: payments.method })
     .from(sales)
@@ -1113,7 +1154,7 @@ export async function getReports(input: { period?: string; from?: string; to?: s
     .where(and(eq(sales.status, "completed"), sql`${cashSessions.businessDate} >= ${range.from}`, sql`${cashSessions.businessDate} <= ${range.to}`))
     .orderBy(asc(cashSessions.businessDate), asc(sales.createdAt));
   const lineRows = await database
-    .select({ productId: saleLines.productId, productName: saleLines.productName, quantity: saleLines.quantity, lineTotal: saleLines.lineTotal, lineVat: saleLines.lineVat, unitCost: saleLines.unitCost, businessDate: cashSessions.businessDate, categoryName: categories.name })
+    .select({ saleId: saleLines.saleId, productId: saleLines.productId, productName: saleLines.productName, quantity: saleLines.quantity, lineTotal: saleLines.lineTotal, lineVat: saleLines.lineVat, unitCost: saleLines.unitCost, businessDate: cashSessions.businessDate, categoryName: categories.name })
     .from(saleLines)
     .innerJoin(sales, eq(sales.id, saleLines.saleId))
     .innerJoin(cashSessions, eq(cashSessions.id, sales.cashSessionId))
@@ -1127,15 +1168,26 @@ export async function getReports(input: { period?: string; from?: string; to?: s
   const cash = salesRows.filter((row) => row.method === "cash").reduce((sum, row) => sum + toNumber(row.totalAmount), 0);
   const card = salesRows.filter((row) => row.method === "card").reduce((sum, row) => sum + toNumber(row.totalAmount), 0);
   const totalCost = lineRows.reduce((sum, row) => sum + toNumber(row.unitCost) * toNumber(row.quantity), 0);
-  const groupKey = (date: string) => period === "day" || period === "week" || period === "custom" ? date : date.slice(0, 7);
-  const seriesMap = new Map<string, { total: number; tickets: number; cash: number; card: number }>();
+  const costBySale = new Map<number, number>();
+  for (const row of lineRows) costBySale.set(row.saleId, (costBySale.get(row.saleId) ?? 0) + toNumber(row.unitCost) * toNumber(row.quantity));
+  const seriesMap = new Map<string, { total: number; tickets: number; cash: number; card: number; cost: number }>();
+  const seriesHours: Array<{ hour: number; tickets: number; total: number; cash: number; card: number; cost: number }> = [];
   for (const row of salesRows) {
-    const key = groupKey(row.businessDate);
-    const current = seriesMap.get(key) ?? { total: 0, tickets: 0, cash: 0, card: 0 };
-    current.total += toNumber(row.totalAmount); current.tickets += 1;
+    const localHour = madridHourNumber(row.createdAt);
+    const key = group === "hour" && localHour !== null ? hourLabel(localHour) : group === "week" ? reportWeekStart(row.businessDate) : group === "month" ? row.businessDate.slice(0, 7) : row.businessDate;
+    const current = seriesMap.get(key) ?? { total: 0, tickets: 0, cash: 0, card: 0, cost: 0 };
+    const rowCost = costBySale.get(row.id) ?? 0;
+    current.total += toNumber(row.totalAmount); current.tickets += 1; current.cost += rowCost;
     if (row.method === "cash") current.cash += toNumber(row.totalAmount);
     if (row.method === "card") current.card += toNumber(row.totalAmount);
     seriesMap.set(key, current);
+    if (group === "hour" && localHour !== null) {
+      const hourCurrent = seriesHours[localHour] ?? { hour: localHour, tickets: 0, total: 0, cash: 0, card: 0, cost: 0 };
+      hourCurrent.tickets += 1; hourCurrent.total += toNumber(row.totalAmount); hourCurrent.cost += rowCost;
+      if (row.method === "cash") hourCurrent.cash += toNumber(row.totalAmount);
+      if (row.method === "card") hourCurrent.card += toNumber(row.totalAmount);
+      seriesHours[localHour] = hourCurrent;
+    }
   }
   const aggregateLines = (keyOf: (row: typeof lineRows[number]) => string) => {
     const map = new Map<string, { key: string; units: number; revenue: number; cost: number; vat: number }>();
@@ -1149,9 +1201,9 @@ export async function getReports(input: { period?: string; from?: string; to?: s
   const byFamily = aggregateLines((row) => row.categoryName ?? "Sin familia").map((row) => ({ family: row.key, units: row.units.toFixed(3), revenue: money(row.revenue), cost: money(row.cost), margin: money(row.revenue - row.cost) }));
   const vatBreakdown = aggregateLines((row) => String(row.lineVat ?? "0")).map((row) => ({ vat: row.key, revenue: money(row.revenue), vatAmount: money(row.vat), units: row.units.toFixed(3) }));
   return {
-    period, from: range.from, to: range.to,
+    period, group, from: range.from, to: range.to,
     totals: { totalSold: money(totalSold), subtotal: money(subtotal), vat: money(vat), cash: money(cash), card: money(card), cost: money(totalCost), margin: money(totalSold - totalCost), tickets: salesRows.length },
-    series: [...seriesMap.entries()].map(([label, row]) => ({ label, ...row, total: money(row.total), cash: money(row.cash), card: money(row.card) })),
+    series: group === "hour" ? trimHourlySeries(Array.from({ length: 24 }, (_, hour) => { const row = seriesHours[hour] ?? { hour, tickets: 0, total: 0, cash: 0, card: 0, cost: 0 }; return row; })).map((row) => ({ label: hourLabel(row.hour), total: money(row.total), tickets: row.tickets, cash: money(row.cash), card: money(row.card), cost: money(row.cost), margin: money(row.total - row.cost) })) : [...seriesMap.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([label, row]) => ({ label, total: money(row.total), tickets: row.tickets, cash: money(row.cash), card: money(row.card), cost: money(row.cost), margin: money(row.total - row.cost) })),
     topProducts, byFamily, vatBreakdown,
   };
 }
