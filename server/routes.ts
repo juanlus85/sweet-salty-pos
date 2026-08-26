@@ -439,6 +439,15 @@ apiRouter.get("/admin/categories", async (_req, res, next) => {
   }
 });
 
+apiRouter.post("/admin/categories/restore-local", async (_req, res, next) => {
+  try {
+    const { restoreLocalCategoryAssignments } = await import("./services/pos");
+    res.json(await restoreLocalCategoryAssignments());
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.get("/admin/promotions", async (_req, res, next) => {
   try {
     const { listPromotions } = await import("./services/pos");

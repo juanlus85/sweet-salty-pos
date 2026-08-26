@@ -1282,6 +1282,38 @@ function loyverseItemVatRate(rawData: unknown, taxRateById: Map<string, number>)
   return [0, 4, 10, 21].includes(combinedRate) ? combinedRate : null;
 }
 
+async function restoreLegacyLocalCategories() {
+  const database = requireDb();
+  return database.transaction(async (tx) => {
+    const [allCategories, remoteItems, allProducts] = await Promise.all([
+      tx.select().from(categories),
+      tx.select().from(loyverseItems),
+      tx.select({ id: products.id, categoryId: products.categoryId, loyverseItemId: products.loyverseItemId }).from(products),
+    ]);
+    const legacyCategories = allCategories.filter((category) => Boolean(category.loyverseId));
+    if (!legacyCategories.length) return { restoredCategories: 0, reassignedProducts: 0 };
+    const categoryIdByRemoteId = new Map(legacyCategories.map((category) => [category.loyverseId as string, category.id]));
+    const itemCategoryByRemoteId = new Map(remoteItems.map((item) => [item.loyverseId, item.categoryLoyverseId]));
+    let reassignedProducts = 0;
+    for (const category of legacyCategories) {
+      await tx.update(categories).set({ loyverseId: null, isActive: true }).where(eq(categories.id, category.id));
+    }
+    for (const product of allProducts) {
+      if (!product.loyverseItemId) continue;
+      const remoteCategoryId = itemCategoryByRemoteId.get(product.loyverseItemId);
+      const localCategoryId = remoteCategoryId ? categoryIdByRemoteId.get(remoteCategoryId) : undefined;
+      if (!localCategoryId || product.categoryId === localCategoryId) continue;
+      await tx.update(products).set({ categoryId: localCategoryId }).where(eq(products.id, product.id));
+      reassignedProducts += 1;
+    }
+    return { restoredCategories: legacyCategories.length, reassignedProducts };
+  });
+}
+
+export async function restoreLocalCategoryAssignments() {
+  return restoreLegacyLocalCategories();
+}
+
 async function ensureLoyverseTaxesSchema() {
   const database = requireDb();
   await database.execute(sql`CREATE TABLE IF NOT EXISTS pos_loyverse_taxes (
@@ -1303,6 +1335,7 @@ async function ensureLoyverseTaxesSchema() {
 
 export async function importLoyverseCatalogToOperational(requestedStoreId?: string) {
   await ensureLoyverseTaxesSchema();
+  const categoryRestoration = await restoreLegacyLocalCategories();
   const database = requireDb();
   const [settingsRows, syncStates, remoteItems, remoteTaxes, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
     database.select().from(posSettings).limit(1),
@@ -1350,12 +1383,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
       return fallbackCategory;
     };
 
-    const importedCategoryIds = localCategories.filter((category) => Boolean(category.loyverseId)).map((category) => category.id);
     const fallback = await ensureFallbackCategory();
-    if (importedCategoryIds.length) {
-      await tx.update(products).set({ categoryId: fallback.id }).where(inArray(products.categoryId, importedCategoryIds));
-      await tx.update(categories).set({ isActive: false }).where(inArray(categories.id, importedCategoryIds));
-    }
 
     const productByVariant = new Map<string, typeof localProducts[number]>();
     const productBySku = new Map<string, typeof localProducts[number]>();
@@ -1406,7 +1434,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         if (local && local.loyverseVariantId && local.loyverseVariantId !== variant.loyverseId) local = undefined;
         try {
           const currentCategory = local ? localCategoryById.get(local.categoryId) : undefined;
-          const categoryId = local && currentCategory && !currentCategory.loyverseId ? local.categoryId : fallback.id;
+          const categoryId = local && currentCategory ? local.categoryId : fallback.id;
           const localWeightedCost = local ? toNumber(local.weightedAverageCost) : 0;
           const localLastCost = local ? toNumber(local.lastPurchaseCost) : 0;
           const effectiveCost = localWeightedCost > 0 ? localWeightedCost : localLastCost > 0 ? localLastCost : importedCost;
@@ -1460,7 +1488,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         }
       }
     }
-    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, taxesAvailable: remoteTaxes.length, productsWithRemoteVat, productsUsingVatFallback, skipped, skippedDetails, storeId: availableStoreId };
+    return { categoriesCreated, categoriesUpdated, categoriesRestored: categoryRestoration.restoredCategories, productsReassigned: categoryRestoration.reassignedProducts, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, taxesAvailable: remoteTaxes.length, productsWithRemoteVat, productsUsingVatFallback, skipped, skippedDetails, storeId: availableStoreId };
   });
   return { success: true, ...imported };
 }
