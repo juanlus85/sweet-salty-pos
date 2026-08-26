@@ -21,6 +21,7 @@ import {
   loyverseVariants,
   loyverseVariantPrices,
   loyverseInventoryLevels,
+  loyverseReceiptLines,
   loyverseSyncState,
   promotions,
   promotionSlots,
@@ -1192,6 +1193,9 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
     database.select().from(inventoryBalances),
   ]);
   if (!remoteItems.length || !remoteVariants.length) throw new Error("Primero sincroniza el catálogo de Loyverse para poder importarlo al TPV.");
+  const receiptCostRows = await database.select({ variantId: loyverseReceiptLines.variantLoyverseId, averageCost: sql<string>`CASE WHEN SUM(${loyverseReceiptLines.quantity}) > 0 THEN SUM(${loyverseReceiptLines.costTotal}) / SUM(${loyverseReceiptLines.quantity}) ELSE 0 END` }).from(loyverseReceiptLines).groupBy(loyverseReceiptLines.variantLoyverseId);
+  const cachedReceiptCostByVariant = new Map<string, number>();
+  for (const row of receiptCostRows) { if (row.variantId) { const value = toNumber(row.averageCost); if (value > 0) cachedReceiptCostByVariant.set(row.variantId, value); } }
 
   const configuredStoreId = settingsRows[0]?.loyverseStoreId || syncStates[0]?.activeStoreId || null;
   const availableStoreId = requestedStoreId || configuredStoreId || remotePrices[0]?.storeLoyverseId || remoteInventory[0]?.storeLoyverseId || null;
@@ -1257,7 +1261,10 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         const barcodeValue = boundedCatalogText(variant.barcode, 100);
         const priceRow = pricesByVariant.get(variant.loyverseId);
         const salePrice = toNumber(priceRow?.price ?? variant.defaultPrice);
-        const importedCost = toNumber(variant.purchaseCost ?? variant.cost);
+        const remotePurchaseCost = toNumber(variant.purchaseCost);
+        const remoteCost = toNumber(variant.cost);
+        const receiptCost = cachedReceiptCostByVariant.get(variant.loyverseId) ?? 0;
+        const importedCost = remotePurchaseCost > 0 ? remotePurchaseCost : remoteCost > 0 ? remoteCost : receiptCost;
         const stockAfter = stockByVariant.get(variant.loyverseId) ?? 0;
         const skuKey = normalizeCatalogText(skuValue);
         const barcodeKey = normalizeCatalogText(barcodeValue);
