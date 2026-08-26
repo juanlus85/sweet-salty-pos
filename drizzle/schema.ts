@@ -338,6 +338,7 @@ export const categories = mysqlTable("pos_categories", {
   id: int("id").autoincrement().primaryKey(),
   loyverseId: varchar("loyverse_id", { length: 64 }),
   name: varchar("name", { length: 100 }).notNull(),
+  parentCategoryId: int("parent_category_id"),
   color: varchar("color", { length: 7 }).notNull().default("#155E75"),
   imageUrl: text("image_url"),
   iconName: varchar("icon_name", { length: 64 }).notNull().default("Package"),
@@ -351,6 +352,7 @@ export const categories = mysqlTable("pos_categories", {
   uniqueIndex("pos_categories_name_unique").on(table.name),
   uniqueIndex("pos_categories_loyverse_id_unique").on(table.loyverseId),
   index("pos_categories_sort_index").on(table.sortOrder, table.isActive),
+  index("pos_categories_parent_index").on(table.parentCategoryId, table.isActive),
 ]);
 
 export const suppliers = mysqlTable("pos_suppliers", {

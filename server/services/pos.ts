@@ -599,8 +599,15 @@ export async function updateSmtpSettings(input: { smtpHost?: string | null; smtp
   return getPosSettings();
 }
 
-export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean; isPromotion?: boolean }) {
+export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean; isPromotion?: boolean; parentCategoryId?: number | null }) {
   const database = requireDb();
+  if (input.parentCategoryId !== undefined && input.parentCategoryId !== null) {
+    const parent = await database.select({ id: categories.id, parentCategoryId: categories.parentCategoryId, isPromotion: categories.isPromotion, isActive: categories.isActive }).from(categories).where(eq(categories.id, input.parentCategoryId)).limit(1);
+    if (!parent[0] || parent[0].isActive === false) throw new Error("La familia padre no existe o está inactiva.");
+    if (parent[0].parentCategoryId !== null) throw new Error("Solo se permite un nivel de subfamilias.");
+    if (parent[0].isPromotion) throw new Error("Una familia de promociones no puede ser padre de subfamilias.");
+    if (input.isPromotion) throw new Error("Una familia de promociones no puede tener una familia padre.");
+  }
   const lastOrder = await database.select({ maxOrder: sql<number>`coalesce(max(${categories.sortOrder}), -1)` }).from(categories);
   const inserted = await database.insert(categories).values({
     name: input.name.trim(),
@@ -610,12 +617,21 @@ export async function createCategory(input: { name: string; color?: string; imag
     sortOrder: input.sortOrder ?? Number(lastOrder[0]?.maxOrder ?? -1) + 1,
     isFeatured: input.isFeatured ?? false,
     isPromotion: input.isPromotion ?? false,
+    parentCategoryId: input.parentCategoryId ?? null,
   });
   return { id: Number(inserted[0].insertId) };
 }
 
-export async function updateCategory(input: { id: number; name?: string; color?: string; imageUrl?: string | null; iconName?: string; sortOrder?: number; isFeatured?: boolean; isPromotion?: boolean; isActive?: boolean }) {
+export async function updateCategory(input: { id: number; name?: string; color?: string; imageUrl?: string | null; iconName?: string; sortOrder?: number; isFeatured?: boolean; isPromotion?: boolean; isActive?: boolean; parentCategoryId?: number | null }) {
   const database = requireDb();
+  if (input.parentCategoryId !== undefined && input.parentCategoryId !== null) {
+    if (input.parentCategoryId === input.id) throw new Error("Una familia no puede ser su propia familia padre.");
+    const parent = await database.select({ id: categories.id, parentCategoryId: categories.parentCategoryId, isPromotion: categories.isPromotion, isActive: categories.isActive }).from(categories).where(eq(categories.id, input.parentCategoryId)).limit(1);
+    if (!parent[0] || parent[0].isActive === false) throw new Error("La familia padre no existe o está inactiva.");
+    if (parent[0].parentCategoryId !== null) throw new Error("Solo se permite un nivel de subfamilias.");
+    if (parent[0].isPromotion) throw new Error("Una familia de promociones no puede ser padre de subfamilias.");
+  }
+  if (input.isPromotion && input.parentCategoryId !== null) throw new Error("Una familia de promociones no puede tener una familia padre.");
   const updateSet: Partial<typeof categories.$inferInsert> = {};
   if (input.name !== undefined) updateSet.name = input.name.trim();
   if (input.color !== undefined) updateSet.color = input.color;
@@ -624,6 +640,7 @@ export async function updateCategory(input: { id: number; name?: string; color?:
   if (input.sortOrder !== undefined) updateSet.sortOrder = input.sortOrder;
   if (input.isFeatured !== undefined) updateSet.isFeatured = input.isFeatured;
   if (input.isPromotion !== undefined) updateSet.isPromotion = input.isPromotion;
+  if (input.parentCategoryId !== undefined) updateSet.parentCategoryId = input.parentCategoryId;
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
   if (input.isActive === false) {
     await database.transaction(async (tx) => {
@@ -1160,10 +1177,9 @@ function boundedCatalogText(value: string | null | undefined, maxLength: number)
 
 export async function importLoyverseCatalogToOperational(requestedStoreId?: string) {
   const database = requireDb();
-  const [settingsRows, syncStates, remoteCategories, remoteItems, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
+  const [settingsRows, syncStates, remoteItems, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
     database.select().from(posSettings).limit(1),
     database.select().from(loyverseSyncState).limit(1),
-    database.select().from(loyverseCategories),
     database.select().from(loyverseItems),
     database.select().from(loyverseVariants),
     database.select().from(loyverseVariantPrices),
@@ -1190,44 +1206,17 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
   for (const variant of remoteVariants) variantsByItem.set(variant.itemLoyverseId, [...(variantsByItem.get(variant.itemLoyverseId) ?? []), variant]);
 
   const imported = await database.transaction(async (tx) => {
-    const categoryByRemoteId = new Map<string, number>();
-    const categoryByName = new Map<string, typeof localCategories[number]>();
-    for (const category of localCategories) categoryByName.set(normalizeCatalogText(category.name), category);
     let categoriesCreated = 0;
-    let categoriesUpdated = 0;
-    for (const remote of remoteCategories) {
-      const remoteId = remote.loyverseId;
-      const categoryName = boundedCatalogText(remote.name, 100) || `Loyverse ${remoteId.slice(0, 8)}`;
-      const normalizedName = normalizeCatalogText(categoryName);
-      let local = localCategories.find((candidate) => candidate.loyverseId === remoteId) ?? categoryByName.get(normalizedName);
-      if (!local) {
-        const inserted = await tx.insert(categories).values({ name: categoryName, color: boundedCatalogText(remote.color, 7) || "#155E75", loyverseId: remoteId, isActive: !remote.deletedAt }).$returningId();
-        const localId = Number(inserted[0]?.id);
-        local = { id: localId, loyverseId: remoteId, name: categoryName, color: boundedCatalogText(remote.color, 7), imageUrl: null, iconName: "Package", sortOrder: 0, isFeatured: false, isActive: !remote.deletedAt, createdAt: new Date(), updatedAt: new Date() } as typeof localCategories[number];
-        localCategories.push(local);
-        categoryByName.set(normalizedName, local);
-        categoriesCreated += 1;
-      } else {
-        const changes: Partial<typeof categories.$inferInsert> = { loyverseId: remoteId, isActive: !remote.deletedAt };
-        if (categoryName && normalizeCatalogText(local.name) !== normalizedName) changes.name = categoryName;
-        if (boundedCatalogText(remote.color, 7)) changes.color = boundedCatalogText(remote.color, 7)!;
-        await tx.update(categories).set(changes).where(eq(categories.id, local.id));
-        local = { ...local, ...changes } as typeof localCategories[number];
-        const index = localCategories.findIndex((candidate) => candidate.id === local?.id);
-        if (index >= 0) localCategories[index] = local;
-        categoryByName.set(normalizedName, local);
-        categoriesUpdated += 1;
-      }
-      categoryByRemoteId.set(remoteId, local.id);
-    }
-
-    let fallbackCategory = localCategories.find((category) => normalizeCatalogText(category.name) === "sin familia");
-    if (!fallbackCategory) {
-      const inserted = await tx.insert(categories).values({ name: "Sin familia", color: "#6B7280", iconName: "Package", isActive: true }).$returningId();
-      fallbackCategory = { id: Number(inserted[0]?.id), loyverseId: null, name: "Sin familia", color: "#6B7280", imageUrl: null, iconName: "Package", sortOrder: 999, isFeatured: false, isActive: true, createdAt: new Date(), updatedAt: new Date() } as typeof localCategories[number];
+    const categoriesUpdated = 0;
+    let fallbackCategory = localCategories.find((category) => normalizeCatalogText(category.name) === "articulos sin asignar") ?? null;
+    const ensureFallbackCategory = async () => {
+      if (fallbackCategory) return fallbackCategory;
+      const inserted = await tx.insert(categories).values({ name: "Artículos sin asignar", color: "#6B7280", iconName: "Package", sortOrder: 999, isActive: true }).$returningId();
+      fallbackCategory = { id: Number(inserted[0]?.id), loyverseId: null, name: "Artículos sin asignar", parentCategoryId: null, color: "#6B7280", imageUrl: null, iconName: "Package", sortOrder: 999, isFeatured: false, isPromotion: false, isActive: true, createdAt: new Date(), updatedAt: new Date() } as typeof localCategories[number];
       localCategories.push(fallbackCategory);
       categoriesCreated += 1;
-    }
+      return fallbackCategory;
+    };
 
     const productByVariant = new Map<string, typeof localProducts[number]>();
     const productBySku = new Map<string, typeof localProducts[number]>();
@@ -1239,6 +1228,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
       if (product.barcode) productByBarcode.set(normalizeCatalogText(product.barcode), product);
       productByName.set(normalizeCatalogText(product.name), product);
     }
+    const localCategoryById = new Map(localCategories.map((category) => [category.id, category]));
     const balanceByProduct = new Map(localBalances.map((balance) => [balance.productId, balance]));
     const defaultVatRate = toNumber(settingsRows[0]?.defaultVatRate ?? 10);
     const defaultVat = await tx.select({ id: vatTypes.id, rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.isActive, true), eq(vatTypes.rate, money(defaultVatRate)))).limit(1);
@@ -1255,7 +1245,6 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         const productName = boundedCatalogText(optionLabel && itemVariants.length > 1 ? `${item.itemName} · ${optionLabel}` : item.itemName, 255) || `Loyverse ${variant.loyverseId.slice(0, 8)}`;
         const skuValue = boundedCatalogText(variant.sku, 100);
         const barcodeValue = boundedCatalogText(variant.barcode, 100);
-        const categoryId = (item.categoryLoyverseId && categoryByRemoteId.get(item.categoryLoyverseId)) || fallbackCategory.id;
         const priceRow = pricesByVariant.get(variant.loyverseId);
         const salePrice = toNumber(priceRow?.price ?? variant.defaultPrice);
         const stockAfter = stockByVariant.get(variant.loyverseId) ?? 0;
@@ -1264,7 +1253,9 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         let local = productByVariant.get(variant.loyverseId) ?? (skuKey ? productBySku.get(skuKey) : undefined) ?? (barcodeKey ? productByBarcode.get(barcodeKey) : undefined) ?? productByName.get(normalizeCatalogText(productName));
         if (local && local.loyverseVariantId && local.loyverseVariantId !== variant.loyverseId) local = undefined;
         try {
-                  if (!local) {
+          const currentCategory = local ? localCategoryById.get(local.categoryId) : undefined;
+          const categoryId = local && currentCategory && !currentCategory.loyverseId ? local.categoryId : (await ensureFallbackCategory()).id;
+          if (!local) {
           const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) });
             const productId = Number(inserted[0].insertId);
             local = { id: productId, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];

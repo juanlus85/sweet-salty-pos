@@ -476,7 +476,7 @@ apiRouter.delete("/admin/promotions/:id", async (req, res, next) => {
 
 apiRouter.post("/admin/categories", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isPromotion: z.boolean().optional() }), req.body);
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isPromotion: z.boolean().optional(), parentCategoryId: z.number().int().positive().nullable().optional() }), req.body);
     const { createCategory } = await import("./services/pos");
     res.status(201).json(await createCategory(input));
   } catch (error) {
@@ -486,7 +486,7 @@ apiRouter.post("/admin/categories", async (req, res, next) => {
 
 apiRouter.patch("/admin/categories/:id", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.nullable().optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isPromotion: z.boolean().optional(), isActive: z.boolean().optional() }), req.body);
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.nullable().optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isPromotion: z.boolean().optional(), isActive: z.boolean().optional(), parentCategoryId: z.number().int().positive().nullable().optional() }), req.body);
     const { updateCategory } = await import("./services/pos");
     res.json(await updateCategory({ id: Number(req.params.id), ...input }));
   } catch (error) {
