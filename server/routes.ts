@@ -328,10 +328,11 @@ apiRouter.post("/admin/loyverse/import/catalog", async (req, res, next) => {
   }
 });
 
-apiRouter.get("/admin/loyverse/sales-range", async (_req, res, next) => {
+apiRouter.get("/admin/loyverse/sales-range", async (req, res, next) => {
   try {
+    const storeId = typeof req.query.storeId === "string" && req.query.storeId.trim() ? req.query.storeId.trim() : undefined;
     const { getLoyverseSalesRange } = await import("./services/loyverse");
-    res.json(await getLoyverseSalesRange());
+    res.json(await getLoyverseSalesRange(storeId));
   } catch (error) {
     next(error);
   }
@@ -344,8 +345,9 @@ apiRouter.post("/admin/loyverse/sync/sales", async (req, res, next) => {
     const to = parseDate(req.body?.to);
     if (from && Number.isNaN(from.getTime())) throw new Error("La fecha inicial de Loyverse no es válida.");
     if (to && Number.isNaN(to.getTime())) throw new Error("La fecha final de Loyverse no es válida.");
+    const storeId = typeof req.body?.storeId === "string" && req.body.storeId.trim() ? req.body.storeId.trim() : undefined;
     const { syncLoyverseSales } = await import("./services/loyverse");
-    res.json(await syncLoyverseSales({ from, to }));
+    res.json(await syncLoyverseSales({ from, to }, storeId));
   } catch (error) {
     next(error);
   }

@@ -377,24 +377,24 @@ export async function syncLoyverseCatalog() {
   }
 }
 
-export async function getLoyverseSalesRange() {
+export async function getLoyverseSalesRange(storeId?: string) {
   const config = await ensureConfigured();
-  const [oldestResponse, newestResponse] = await Promise.all([
-    loyverseRequest("/receipts", { order: "created_at_asc", limit: "1", store_id: config.storeId || undefined }),
-    loyverseRequest("/receipts", { order: "created_at_desc", limit: "1", store_id: config.storeId || undefined }),
-  ]);
-  const oldest = asArray(oldestResponse.receipts)[0];
-  const newest = asArray(newestResponse.receipts)[0];
+  const receipts = await fetchAll("/receipts", "receipts", { store_id: storeId?.trim() || config.storeId || undefined });
+  const datedReceipts = receipts.map((receipt) => ({ receipt, date: receiptDate(receipt) })).filter((entry): entry is { receipt: JsonObject; date: Date } => Boolean(entry.date)).sort((left, right) => left.date.getTime() - right.date.getTime());
+  const first = datedReceipts[0];
+  const last = datedReceipts[datedReceipts.length - 1];
   return {
-    firstReceiptDate: oldest ? receiptDate(oldest)?.toISOString() || null : null,
-    lastReceiptDate: newest ? receiptDate(newest)?.toISOString() || null : null,
-    firstReceiptNumber: oldest ? asString(oldest.receipt_number) : null,
-    lastReceiptNumber: newest ? asString(newest.receipt_number) : null,
+    firstReceiptDate: first?.date.toISOString() || null,
+    lastReceiptDate: last?.date.toISOString() || null,
+    firstReceiptNumber: first ? asString(first.receipt.receipt_number) : null,
+    lastReceiptNumber: last ? asString(last.receipt.receipt_number) : null,
+    receiptCount: receipts.length,
   };
 }
 
-export async function syncLoyverseSales(range: SyncDateRange = {}) {
+export async function syncLoyverseSales(range: SyncDateRange = {}, requestedStoreId?: string) {
   const config = await ensureConfigured();
+  const selectedStoreId = requestedStoreId?.trim() || config.storeId || undefined;
   const effectiveRange = normalizedSalesRange(range);
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
@@ -402,8 +402,8 @@ export async function syncLoyverseSales(range: SyncDateRange = {}) {
     const database = requireDb();
     const [items, receipts, shifts] = await Promise.all([
       database.select().from(loyverseItems),
-      fetchAll("/receipts", "receipts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), order: "created_at_asc", store_id: config.storeId || undefined }),
-      fetchAll("/shifts", "shifts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), store_ids: config.storeId || undefined }),
+      fetchAll("/receipts", "receipts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), store_id: selectedStoreId }),
+      fetchAll("/shifts", "shifts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), store_ids: selectedStoreId }),
     ]);
     const itemNames = new Map(items.map((item) => [item.loyverseId, item.itemName]));
     await runBatches(receipts, (receipt) => upsertReceipt(receipt, itemNames), 4);

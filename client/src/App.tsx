@@ -63,11 +63,11 @@ function buildSalesRanges(from: string, to: string) {
   return ranges;
 }
 
-async function syncSalesInChunks(from: string, to: string) {
+async function syncSalesInChunks(from: string, to: string, storeId = "") {
   let effectiveFrom = from;
   let effectiveTo = to;
   if (!from && !to) {
-    const available = await api<{ firstReceiptDate: string | null; lastReceiptDate: string | null }>("/admin/loyverse/sales-range");
+    const available = await api<{ firstReceiptDate: string | null; lastReceiptDate: string | null; receiptCount: number }>(`/admin/loyverse/sales-range${storeId ? `?storeId=${encodeURIComponent(storeId)}` : ""}`);
     if (!available.firstReceiptDate || !available.lastReceiptDate) return { receipts: 0, shifts: 0, chunks: 0, noData: true };
     effectiveFrom = available.firstReceiptDate.slice(0, 10);
     effectiveTo = available.lastReceiptDate.slice(0, 10);
@@ -76,7 +76,7 @@ async function syncSalesInChunks(from: string, to: string) {
   let receipts = 0;
   let shifts = 0;
   for (const range of ranges) {
-    const result = await api<{ receipts: number; shifts: number }>("/admin/loyverse/sync/sales", { method: "POST", body: JSON.stringify(range) });
+    const result = await api<{ receipts: number; shifts: number }>("/admin/loyverse/sync/sales", { method: "POST", body: JSON.stringify({ ...range, storeId: storeId || undefined }) });
     receipts += result.receipts;
     shifts += result.shifts;
   }
@@ -484,14 +484,14 @@ function AdminScreen({ onBack }: { onBack: () => void }) {
     onError: (error) => toast.error("No se ha podido sincronizar el catálogo de Loyverse", { description: error.message }),
   });
   const syncLoyverseSalesMutation = useMutation({
-    mutationFn: () => syncSalesInChunks(loyverseFrom, loyverseTo),
+    mutationFn: () => syncSalesInChunks(loyverseFrom, loyverseTo, loyverseStoreId),
     onSuccess: (result) => { if (result.noData) toast.info("Loyverse no tiene recibos en la cuenta o tienda seleccionada"); else toast.success("Ventas de Loyverse importadas", { description: `${result.receipts} recibos · ${result.shifts} turnos · ${result.chunks} tramo${result.chunks === 1 ? "" : "s"}. Solo lectura.` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
     onError: (error) => toast.error("No se han podido importar las ventas de Loyverse", { description: error.message }),
   });
   const syncLoyverseAllMutation = useMutation({
     mutationFn: async () => {
       const catalog = await api<{ success: boolean; items: number; categories: number; inventoryLevels: number }>("/admin/loyverse/sync/catalog", { method: "POST" });
-      const sales = await syncSalesInChunks(loyverseFrom, loyverseTo);
+      const sales = await syncSalesInChunks(loyverseFrom, loyverseTo, loyverseStoreId);
       return { ...catalog, ...sales };
     },
     onSuccess: (result) => { toast.success("Loyverse sincronizado", { description: `${result.items} artículos, ${result.receipts} recibos y ${result.shifts} turnos importados. Solo lectura.` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
