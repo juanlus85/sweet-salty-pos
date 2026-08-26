@@ -113,6 +113,7 @@ type Product = {
   showInTpv?: boolean;
 };
 type CartLine = Product & { quantity: number; unitPriceOverride?: number; discountPercent?: number; pricingMode?: "normal" | "discount" | "cost" | "free" | "promotion"; promotionId?: number | null; promotionSelections?: number[]; promotionComponents?: string[] };
+type OpenTicket = { slotNumber: number; cart: CartLine[]; savedAt: string };
 
 function cartLineBasePrice(line: CartLine) { return line.pricingMode === "cost" ? Number(line.cost ?? 0) : Number(line.unitPriceOverride ?? line.salePrice); }
 function cartLineDiscount(line: CartLine) { return line.pricingMode === "free" ? 100 : Number(line.discountPercent ?? 0); }
@@ -202,6 +203,15 @@ function PromotionSelector({ product, promotion, onClose, onConfirm }: { product
   return <div className="modal-backdrop promotion-selector-backdrop"><section className="promotion-selector" role="dialog" aria-modal="true" aria-labelledby="promotion-selector-title"><div className="dialog-header"><div><span className="eyebrow">PROMOCIÓN</span><h2 id="promotion-selector-title">{promotion.name}</h2><p>{euro.format(Number(promotion.comboPrice))} · Elige una opción de cada familia</p></div><button className="post-sale-x-button" onClick={onClose} aria-label="Cerrar"><X size={25} /></button></div><div className="promotion-selector__choices">{promotion.slots.map((slot, index) => <section className="promotion-choice-group" key={slot.id}><div><span className="eyebrow">OPCIÓN {index + 1}</span><h3>{slot.label}</h3></div><div className="promotion-choice-grid">{slot.products.map((choice) => <button className={selections[slot.id] === choice.productId ? "promotion-choice promotion-choice--selected" : "promotion-choice"} key={choice.productId} onClick={() => setSelections((current) => ({ ...current, [slot.id]: choice.productId }))}><span>{choice.productName}</span>{selections[slot.id] === choice.productId && <Check size={18} />}</button>)}</div></section>)}</div><p className="helper-text">Se descontará una unidad del stock de cada artículo seleccionado.</p><div className="promotion-selector__footer"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!ready} onClick={() => onConfirm(promotion.slots.map((slot) => { const productId = selections[slot.id]; return { productId, productName: slot.products.find((productOption) => productOption.productId === productId)?.productName ?? "Artículo" }; }))}>Añadir combo · {euro.format(Number(promotion.comboPrice))}</button></div></section></div>;
 }
 
+function formatOpenTicketDate(value: string) {
+  return new Date(value).toLocaleString("es-ES", { timeZone: "Europe/Madrid", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function OpenTicketsDialog({ tickets, mode, cartCount, cartTotal, saving, onClose, onSave, onLoad, onClear }: { tickets: OpenTicket[]; mode: "save" | "load"; cartCount: number; cartTotal: number; saving: boolean; onClose: () => void; onSave: (slotNumber: number) => void; onLoad: (ticket: OpenTicket) => void; onClear: (slotNumber: number) => void }) {
+  const bySlot = new Map(tickets.map((ticket) => [ticket.slotNumber, ticket]));
+  return <div className="modal-backdrop open-tickets-backdrop"><section className="open-tickets-dialog" role="dialog" aria-modal="true" aria-labelledby="open-tickets-title"><div className="dialog-header"><div><span className="eyebrow">TICKETS ABIERTOS</span><h2 id="open-tickets-title">{mode === "save" ? "Guardar ticket" : "Abrir ticket"}</h2><p>{mode === "save" ? `${cartCount} artículos · ${euro.format(cartTotal)}` : "Selecciona una posición guardada para recuperarla."}</p></div><button className="post-sale-x-button" onClick={onClose} aria-label="Cerrar"><X size={25} /></button></div><div className="open-tickets-grid">{Array.from({ length: 10 }, (_, index) => index + 1).map((slotNumber) => { const ticket = bySlot.get(slotNumber); return <article className={ticket ? "open-ticket-slot open-ticket-slot--filled" : "open-ticket-slot"} key={slotNumber}><div className="open-ticket-slot__heading"><strong>Ticket {slotNumber}</strong><span>{ticket ? `${ticket.cart.length} líneas` : "Vacío"}</span></div>{ticket ? <small>Último guardado<br /><b>{formatOpenTicketDate(ticket.savedAt)}</b></small> : <small className="open-ticket-slot__empty">Sin ticket guardado</small>}<div className="open-ticket-slot__actions">{mode === "save" ? <button className="secondary-button secondary-button--small" disabled={saving} onClick={() => onSave(slotNumber)}>{saving ? "Guardando…" : ticket ? "Reemplazar" : "Guardar aquí"}</button> : <button className="primary-button primary-button--small" disabled={!ticket} onClick={() => ticket && onLoad(ticket)}>Abrir</button>}{ticket && <button className="table-icon-button table-icon-button--danger" onClick={() => onClear(slotNumber)} aria-label={`Eliminar ticket ${slotNumber}`} title={`Eliminar ticket ${slotNumber}`}><Trash2 size={15} /></button>}</div></article>; })}</div><p className="helper-text">Puedes mantener hasta diez tickets abiertos. La fecha y hora corresponden al último guardado de cada posición.</p></section></div>;
+}
+
 function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -215,13 +225,26 @@ function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
   const [promotionChoice, setPromotionChoice] = useState<{ product: Product; promotion: Promotion } | null>(null);
   const [promotionLoading, setPromotionLoading] = useState(false);
+  const [openTicketsMode, setOpenTicketsMode] = useState<"save" | "load" | null>(null);
+  const [activeOpenTicketSlot, setActiveOpenTicketSlot] = useState<number | null>(null);
 
+  const openTicketsQuery = useQuery({ queryKey: ["open-tickets"], queryFn: () => api<OpenTicket[]>("/open-tickets") });
   const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: () => api<Category[]>("/categories") });
   const catalogQuery = useQuery({
     queryKey: ["catalog", isSearching ? null : selectedCategory, order],
     queryFn: () => api<Product[]>(`/catalog?order=${order}${!isSearching && selectedCategory ? `&categoryId=${selectedCategory}` : ""}`),
   });
   const featuredQuery = useQuery({ queryKey: ["featured"], queryFn: () => api<Product[]>("/catalog/featured"), enabled: selectedCategory === null && !isSearching });
+  const saveOpenTicketMutation = useMutation({
+    mutationFn: (input: { slotNumber: number; cart: CartLine[] }) => api<OpenTicket>(`/open-tickets/${input.slotNumber}`, { method: "PUT", body: JSON.stringify({ cart: input.cart }) }),
+    onSuccess: (_ticket, input) => { setActiveOpenTicketSlot(input.slotNumber); setOpenTicketsMode(null); queryClient.invalidateQueries({ queryKey: ["open-tickets"] }); toast.success(`Ticket ${input.slotNumber} guardado`, { description: "Puedes recuperarlo desde Abrir ticket." }); },
+    onError: (error) => toast.error("No se ha podido guardar el ticket", { description: error.message }),
+  });
+  const clearOpenTicketMutation = useMutation({
+    mutationFn: (slotNumber: number) => api<{ success: boolean }>(`/open-tickets/${slotNumber}`, { method: "DELETE" }),
+    onSuccess: (_result, slotNumber) => { if (activeOpenTicketSlot === slotNumber) setActiveOpenTicketSlot(null); queryClient.invalidateQueries({ queryKey: ["open-tickets"] }); },
+    onError: (error) => toast.error("No se ha podido eliminar el ticket guardado", { description: error.message }),
+  });
   const checkoutMutation = useMutation({
     mutationFn: (payload: { method: "cash" | "card"; tendered?: number; reference?: string }) => api<CheckoutResult>("/checkout", {
       method: "POST",
@@ -236,6 +259,7 @@ function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
        setCart([]);
        setIsPaying(false);
        setCompletedSale(result);
+       if (activeOpenTicketSlot !== null) { clearOpenTicketMutation.mutate(activeOpenTicketSlot); setActiveOpenTicketSlot(null); }
       toast.success(`Venta ${result.saleNumber} guardada`, { description: result.changeAmount !== "0.00" ? `Cambio: ${euro.format(Number(result.changeAmount))}` : `${euro.format(Number(result.totalAmount))} · ${result.paymentMethod === "card" ? "Tarjeta" : "Efectivo"}` });
       queryClient.invalidateQueries({ queryKey: ["catalog"] });
       queryClient.invalidateQueries({ queryKey: ["featured"] });
@@ -255,6 +279,18 @@ function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
   };
 
+  const saveCurrentOpenTicket = (slotNumber: number) => {
+    const existing = (openTicketsQuery.data ?? []).find((ticket) => ticket.slotNumber === slotNumber);
+    if (existing && !window.confirm(`El ticket ${slotNumber} ya contiene un ticket guardado el ${formatOpenTicketDate(existing.savedAt)}. ¿Reemplazarlo?`)) return;
+    saveOpenTicketMutation.mutate({ slotNumber, cart });
+  };
+  const loadOpenTicket = (ticket: OpenTicket) => {
+    if (cart.length && !window.confirm("El ticket actual se reemplazará por el ticket guardado. ¿Continuar?")) return;
+    setCart(ticket.cart);
+    setActiveOpenTicketSlot(ticket.slotNumber);
+    setOpenTicketsMode(null);
+    toast.success(`Ticket ${ticket.slotNumber} abierto`, { description: `Guardado el ${formatOpenTicketDate(ticket.savedAt)}` });
+  };
   const selectedCategoryData = categoriesQuery.data?.find((category) => category.id === selectedCategory) ?? null;
   const childCategories = selectedCategory === null ? [] : (categoriesQuery.data ?? []).filter((category) => category.parentCategoryId === selectedCategory);
   const rootCategories = (categoriesQuery.data ?? []).filter((category) => category.parentCategoryId === null);
@@ -353,12 +389,13 @@ function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
         <div className="ticket-lines">
           {cart.length === 0 ? <div className="empty-ticket"><div><ReceiptText size={28} /></div><strong>El ticket está vacío</strong><span>Selecciona artículos del catálogo para empezar.</span></div> : cart.map((line) => <article className="ticket-line ticket-line--editable" key={cartLineIdentity(line)} onClick={() => setEditingLineKey(cartLineIdentity(line))} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setEditingLineKey(cartLineIdentity(line)); }} aria-label={`Editar ${line.name}`}><ProductImage product={line} compact /><div className="ticket-line__info"><strong>{line.name}</strong><span>× {line.quantity} · {euro.format(cartLineUnitPrice(line))} / {line.unit}{cartLineDiscount(line) > 0 ? ` · -${cartLineDiscount(line)}%` : ""}</span>{line.promotionComponents?.length ? <div className="ticket-line__components"><small>Incluye:</small>{line.promotionComponents.map((component, index) => <span key={`${component}-${index}`}>{component}</span>)}</div> : null}<div className="quantity-control"><button onClick={(event) => { event.stopPropagation(); updateCartQuantity(cartLineIdentity(line), -1); }} aria-label={`Restar ${line.name}`}><Minus size={15} /></button><span>{line.quantity}</span><button onClick={(event) => { event.stopPropagation(); updateCartQuantity(cartLineIdentity(line), 1); }} aria-label={`Sumar ${line.name}`}><Plus size={15} /></button></div></div><div className="ticket-line__total"><strong>{euro.format(cartLineTotal(line))}</strong><button onClick={(event) => { event.stopPropagation(); updateCartQuantity(cartLineIdentity(line), -line.quantity); }} aria-label={`Eliminar ${line.name}`}><X size={16} /></button></div></article>)}
         </div>
-        <footer className="ticket-footer"><div className="ticket-summary"><div><span>Subtotal</span><strong>{euro.format(cartTotal)}</strong></div><div><span>Descuentos</span><strong>{euro.format(cart.reduce((sum, line) => sum + Math.max(0, (Number(line.salePrice) - cartLineUnitPrice(line)) * line.quantity), 0))}</strong></div><div><span>IVA incluido</span><strong>{euro.format(cart.reduce((sum, line) => sum + cartLineVat(line), 0))}</strong></div><div className="ticket-total"><span>Total</span><strong>{euro.format(cartTotal)}</strong></div></div><div className="ticket-footer__actions"><button className="save-ticket-button" disabled={!cart.length} onClick={() => toast.message("Los tickets abiertos se incorporarán en una fase posterior")}>Guardar</button><button className="charge-button" disabled={!cart.length || checkoutMutation.isPending} onClick={() => setIsPaying(true)}>{checkoutMutation.isPending ? "Procesando…" : <><CreditCard size={20} /> Cobrar {cart.length ? euro.format(cartTotal) : ""}</>}</button></div><div className="ticket-footnote"><Barcode size={14} /> Escanea un código o usa la búsqueda</div></footer>
+        <footer className="ticket-footer"><div className="ticket-summary"><div><span>Subtotal</span><strong>{euro.format(cartTotal)}</strong></div><div><span>Descuentos</span><strong>{euro.format(cart.reduce((sum, line) => sum + Math.max(0, (Number(line.salePrice) - cartLineUnitPrice(line)) * line.quantity), 0))}</strong></div><div><span>IVA incluido</span><strong>{euro.format(cart.reduce((sum, line) => sum + cartLineVat(line), 0))}</strong></div><div className="ticket-total"><span>Total</span><strong>{euro.format(cartTotal)}</strong></div></div><div className="ticket-footer__actions"><div className="ticket-open-actions"><button className="save-ticket-button" disabled={!cart.length || saveOpenTicketMutation.isPending} onClick={() => setOpenTicketsMode("save")}><ReceiptText size={17} /> Guardar ticket</button><button className="open-ticket-button" onClick={() => setOpenTicketsMode("load")}><Folder size={17} /> Abrir ticket</button></div><button className="charge-button" disabled={!cart.length || checkoutMutation.isPending} onClick={() => setIsPaying(true)}>{checkoutMutation.isPending ? "Procesando…" : <><CreditCard size={20} /> Cobrar {cart.length ? euro.format(cartTotal) : ""}</>}</button></div><div className="ticket-footnote"><Barcode size={14} /> Escanea un código o usa la búsqueda</div></footer>
       </aside>
       {editingLineKey !== null && cart.find((line) => cartLineIdentity(line) === editingLineKey) && <TicketLineEditor line={cart.find((line) => cartLineIdentity(line) === editingLineKey)!} onClose={() => setEditingLineKey(null)} onSave={(changes) => updateCartLine(editingLineKey, changes)} />}
       {promotionLoading && <div className="modal-backdrop"><section className="promotion-selector"><div className="admin-empty">Cargando promoción…</div></section></div>}
       {promotionChoice && <PromotionSelector product={promotionChoice.product} promotion={promotionChoice.promotion} onClose={() => setPromotionChoice(null)} onConfirm={addPromotionToCart} />}
       {isPaying && <CheckoutDialog cart={cart} total={cartTotal} onClose={() => !checkoutMutation.isPending && setIsPaying(false)} onComplete={(method, tendered, reference) => checkoutMutation.mutate({ method, tendered, reference })} />}
+      {openTicketsMode && <OpenTicketsDialog tickets={openTicketsQuery.data ?? []} mode={openTicketsMode} cartCount={totalUnits} cartTotal={cartTotal} saving={saveOpenTicketMutation.isPending} onClose={() => !saveOpenTicketMutation.isPending && setOpenTicketsMode(null)} onSave={saveCurrentOpenTicket} onLoad={loadOpenTicket} onClear={(slotNumber) => { if (window.confirm(`¿Eliminar el ticket ${slotNumber} guardado?`)) clearOpenTicketMutation.mutate(slotNumber); }} />}
       {completedSale && <PostSaleActions result={completedSale} onClose={() => setCompletedSale(null)} />}
     </main>
   );

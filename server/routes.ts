@@ -15,6 +15,9 @@ import {
   listVatTypes,
   listCatalog,
   listCategories,
+  listOpenTickets,
+  saveOpenTicket,
+  clearOpenTicket,
 } from "./services/pos";
 
 const checkoutSchema = z.object({
@@ -26,6 +29,8 @@ const checkoutSchema = z.object({
 });
 
 const mediaPathSchema = z.string().max(2000).refine((value) => value.startsWith("/") || /^https?:\/\//i.test(value), "La imagen debe ser una ruta local o una URL HTTP válida.");
+const openTicketCartSchema = z.array(z.unknown()).min(1).max(100, "El ticket no puede tener más de 100 líneas.");
+const openTicketSlotSchema = z.coerce.number().int().min(1).max(10);
 
 const createProductSchema = z.object({
   categoryId: z.number().int().positive(),
@@ -102,6 +107,30 @@ apiRouter.post("/products", async (req, res, next) => {
   }
 });
 
+apiRouter.get("/open-tickets", async (_req, res, next) => {
+  try {
+    res.json(await listOpenTickets());
+  } catch (error) {
+    next(error);
+  }
+});
+apiRouter.put("/open-tickets/:slotNumber", async (req, res, next) => {
+  try {
+    const slotNumber = openTicketSlotSchema.parse(req.params.slotNumber);
+    const cart = parseBody(openTicketCartSchema, req.body?.cart);
+    res.json(await saveOpenTicket({ slotNumber, cart }));
+  } catch (error) {
+    next(error);
+  }
+});
+apiRouter.delete("/open-tickets/:slotNumber", async (req, res, next) => {
+  try {
+    const slotNumber = openTicketSlotSchema.parse(req.params.slotNumber);
+    res.json(await clearOpenTicket(slotNumber));
+  } catch (error) {
+    next(error);
+  }
+});
 apiRouter.post("/checkout", async (req, res, next) => {
   try {
     const input = parseBody(checkoutSchema, req.body);

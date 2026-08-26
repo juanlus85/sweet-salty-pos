@@ -27,6 +27,7 @@ import {
   promotions,
   promotionSlots,
   promotionSlotProducts,
+  openTickets,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { issueFiscalTestRecord } from "./fiscal";
@@ -249,6 +250,33 @@ export type CheckoutInput = {
   terminalReference?: string;
   note?: string;
 };
+
+type OpenTicketCart = unknown[];
+
+function assertOpenTicketSlot(slotNumber: number) {
+  if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 10) throw new Error("La posición del ticket debe estar entre 1 y 10.");
+}
+
+export async function listOpenTickets() {
+  const database = requireDb();
+  return database.select({ slotNumber: openTickets.slotNumber, cart: openTickets.cart, savedAt: openTickets.savedAt }).from(openTickets).orderBy(asc(openTickets.slotNumber));
+}
+
+export async function saveOpenTicket(input: { slotNumber: number; cart: OpenTicketCart }) {
+  assertOpenTicketSlot(input.slotNumber);
+  if (!Array.isArray(input.cart) || input.cart.length === 0) throw new Error("No se puede guardar un ticket vacío.");
+  const database = requireDb();
+  await database.insert(openTickets).values({ slotNumber: input.slotNumber, cart: input.cart }).onDuplicateKeyUpdate({ set: { cart: input.cart, savedAt: new Date() } });
+  const saved = await database.select({ slotNumber: openTickets.slotNumber, cart: openTickets.cart, savedAt: openTickets.savedAt }).from(openTickets).where(eq(openTickets.slotNumber, input.slotNumber)).limit(1);
+  return saved[0];
+}
+
+export async function clearOpenTicket(slotNumber: number) {
+  assertOpenTicketSlot(slotNumber);
+  const database = requireDb();
+  await database.delete(openTickets).where(eq(openTickets.slotNumber, slotNumber));
+  return { success: true };
+}
 
 export async function checkout(input: CheckoutInput) {
   const database = requireDb();

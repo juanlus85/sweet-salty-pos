@@ -500,6 +500,15 @@ export const cashSessions = mysqlTable("pos_cash_sessions", {
   uniqueIndex("pos_cash_sessions_date_unique").on(table.businessDate),
 ]);
 
+export const openTickets = mysqlTable("pos_open_tickets", {
+  id: int("id").autoincrement().primaryKey(),
+  slotNumber: int("slot_number").notNull(),
+  cart: json("cart").notNull(),
+  savedAt: timestamp("saved_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_open_tickets_slot_unique").on(table.slotNumber),
+]);
+
 export const sales = mysqlTable("pos_sales", {
   id: int("id").autoincrement().primaryKey(),
   saleNumber: varchar("sale_number", { length: 32 }).notNull(),
@@ -630,4 +639,5 @@ export type Category = typeof categories.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type CashSession = typeof cashSessions.$inferSelect;
+export type OpenTicket = typeof openTickets.$inferSelect;
 export type Sale = typeof sales.$inferSelect;

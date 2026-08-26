@@ -533,3 +533,38 @@ button:disabled { cursor: not-allowed; }
   .quick-cell-input, .quick-cell-select { min-height: 40px; }
   .quick-edit-hint { padding: 0 4px; }
 }
+
+/* Tickets abiertos */
+.ticket-open-actions { display: grid; grid-template-columns: 1fr 1fr; min-width: 0; }
+.ticket-open-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.open-tickets-dialog { width: min(100%, 860px); max-height: min(90vh, 760px); overflow-y: auto; padding: 25px; border-radius: 20px; background: #fff; box-shadow: 0 25px 70px rgba(9,33,18,.3); }
+.open-tickets-dialog h2 { margin-top: 5px; color: #20442f; font-size: 26px; letter-spacing: -1px; }
+.open-tickets-dialog .dialog-header p { margin-top: 5px; color: #829087; font-size: 11px; }
+.open-tickets-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
+.open-ticket-slot { min-height: 128px; display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #dfe8df; border-radius: 13px; background: #fbfcfa; }
+.open-ticket-slot--filled { border-color: #b7d2b9; background: #f3faf2; }
+.open-ticket-slot__heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.open-ticket-slot__heading strong { color: #284b34; font-size: 14px; }
+.open-ticket-slot__heading span { color: #7f9183; font-size: 10px; }
+.open-ticket-slot small { color: #86958a; font-size: 10px; line-height: 1.45; }
+.open-ticket-slot small b { color: #46634c; font-weight: 700; }
+.open-ticket-slot__empty { margin-top: 7px; }
+.open-ticket-slot__actions { display: flex; align-items: center; gap: 7px; margin-top: auto; }
+.open-ticket-slot__actions .secondary-button,
+.open-ticket-slot__actions .primary-button { flex: 1; }
+.open-ticket-slot__actions .table-icon-button { flex: none; }
+.open-tickets-dialog > .helper-text { margin-top: 18px; }
+@media (min-width: 761px) {
+  .open-tickets-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .open-ticket-slot { min-height: 150px; padding: 13px 11px; }
+  .open-ticket-slot__heading { display: block; }
+  .open-ticket-slot__heading span { display: block; margin-top: 4px; }
+  .open-ticket-slot__actions { display: grid; }
+}
+@media (max-width: 760px) {
+  .ticket-footer__actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .ticket-open-actions { min-height: 46px; }
+  .ticket-open-actions button { min-height: 46px; }
+  .open-tickets-dialog { padding: 20px 15px; }
+  .open-tickets-dialog h2 { font-size: 22px; }
+}
