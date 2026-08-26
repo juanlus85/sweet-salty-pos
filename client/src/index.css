@@ -344,3 +344,59 @@ button:disabled { cursor: not-allowed; }
 .report-family-bar__track { height: 10px; overflow: hidden; border-radius: 99px; background: #edf3eb; }
 .report-family-bar__fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg,#8fc54f,#5f9e31); transition: width .25s ease; }
 @media (max-width:760px) { .report-family-bar > div:first-child { align-items: flex-start; flex-direction: column; gap: 3px; } }
+
+/* Edición de líneas y promociones */
+.ticket-line--editable { cursor: pointer; transition: background-color .16s ease, transform .16s ease; }
+.ticket-line--editable:hover, .ticket-line--editable:focus-visible { background: #f0f7ef; outline: 2px solid rgba(76,138,90,.28); outline-offset: -2px; }
+.ticket-line-editor-backdrop, .promotion-selector-backdrop { z-index: 80; }
+.ticket-line-editor, .promotion-selector { width: min(680px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto; background: #fff; border-radius: 20px; box-shadow: 0 24px 80px rgba(24,46,28,.28); padding: 24px; }
+.ticket-line-editor h2, .promotion-selector h2 { margin: 4px 0 0; color: #17351f; }
+.ticket-line-editor__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0 10px; }
+.ticket-line-editor__fields label, .promotion-form-card label { display: grid; gap: 7px; font-weight: 700; color: #31523a; }
+.ticket-line-editor__fields input, .promotion-form-card input, .promotion-form-card select { min-height: 48px; border: 1px solid #cbd9cb; border-radius: 10px; padding: 0 12px; font-size: 16px; background: #fbfdfb; }
+.ticket-line-editor__current { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: #637565; font-size: 14px; padding: 10px 0 16px; }
+.ticket-line-editor__discounts { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 9px; }
+.ticket-line-editor__discounts button { min-height: 74px; border: 1px solid #c8dcc9; border-radius: 12px; background: #f7fbf7; color: #244b2d; display: grid; place-content: center; gap: 4px; cursor: pointer; padding: 8px; }
+.ticket-line-editor__discounts button:hover, .ticket-line-editor__discounts button:focus-visible { background: #e5f2e5; border-color: #4c8a5a; }
+.ticket-line-editor__discounts strong { font-size: 14px; }
+.ticket-line-editor__discounts small { color: #657867; }
+.ticket-line-editor__actions, .promotion-selector__footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.promotion-selector { width: min(860px, calc(100vw - 28px)); }
+.promotion-selector__choices { display: grid; gap: 16px; margin-top: 18px; }
+.promotion-choice-group { border: 1px solid #d8e4d8; border-radius: 14px; padding: 15px; background: #fbfdfb; }
+.promotion-choice-group h3 { margin: 4px 0 11px; color: #23452b; }
+.promotion-choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; }
+.promotion-choice { min-height: 54px; border: 1px solid #c9d9ca; background: #fff; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #274a2e; cursor: pointer; text-align: left; font-size: 15px; }
+.promotion-choice--selected { background: #e2f1e3; border-color: #4c8a5a; box-shadow: inset 0 0 0 2px rgba(76,138,90,.16); font-weight: 700; }
+.promotion-slots { display: grid; gap: 14px; margin: 14px 0; }
+.promotion-slots-header, .promotion-slot-card__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.promotion-slots-header { margin-top: 24px; }
+.promotion-slots-header h3 { margin: 4px 0 0; color: #23452b; }
+.promotion-slot-card { border: 1px solid #d4e1d4; border-radius: 14px; padding: 15px; background: #fbfdfb; }
+.promotion-slot-card .form-row { margin: 12px 0; }
+.promotion-products-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; max-height: 230px; overflow: auto; padding-right: 2px; }
+.promotion-product-option { display: flex !important; align-items: center; gap: 8px !important; border: 1px solid #d9e4d9; border-radius: 9px; padding: 10px; background: #fff; font-weight: 500 !important; cursor: pointer; }
+.promotion-product-option input { min-height: auto; width: 18px; height: 18px; accent-color: #4c8a5a; }
+.promotion-product-option small { margin-left: auto; color: #647665; }
+.promotion-list { display: grid; gap: 10px; }
+.promotion-list__row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 15px; border: 1px solid #d9e4d9; border-radius: 12px; background: #fbfdfb; }
+.promotion-list__row > div { display: grid; gap: 4px; min-width: 0; }
+.promotion-list__row strong { color: #23452b; font-size: 16px; }
+.promotion-list__row span, .promotion-list__row small { color: #657867; }
+.checkbox-field { display: flex !important; align-items: flex-start; gap: 10px !important; }
+.checkbox-field input { width: 20px; height: 20px; min-height: 20px; accent-color: #4c8a5a; margin-top: 2px; }
+.checkbox-field span { display: grid; gap: 3px; }
+.checkbox-field small { color: #687a6b; font-weight: 400; }
+.category-promotion-toggle { padding: 11px; border: 1px solid #d8e4d8; border-radius: 10px; background: #f7fbf7; }
+@media (max-width: 700px) {
+  .ticket-line-editor__fields, .ticket-line-editor__discounts { grid-template-columns: 1fr 1fr; }
+  .ticket-line-editor__discounts button:last-child { grid-column: span 2; }
+  .promotion-list__row { align-items: stretch; flex-direction: column; }
+  .promotion-list__row .secondary-button { align-self: flex-start; }
+}
+@media (max-width: 460px) {
+  .ticket-line-editor, .promotion-selector { padding: 17px; }
+  .ticket-line-editor__discounts { grid-template-columns: 1fr; }
+  .ticket-line-editor__discounts button:last-child { grid-column: auto; }
+  .promotion-products-picker { grid-template-columns: 1fr; }
+}

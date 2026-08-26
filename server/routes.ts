@@ -18,7 +18,7 @@ import {
 } from "./services/pos";
 
 const checkoutSchema = z.object({
-  lines: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().positive() })).min(1),
+  lines: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().positive(), unitPrice: z.number().nonnegative().optional(), discountPercent: z.number().min(0).max(100).optional(), pricingMode: z.enum(["normal", "discount", "cost", "free", "promotion"]).optional(), promotionId: z.number().int().positive().optional(), promotionSelections: z.array(z.number().int().positive()).max(3).optional() })).min(1),
   paymentMethod: z.enum(["cash", "card"]),
   receivedAmount: z.number().nonnegative().optional(),
   terminalReference: z.string().max(100).optional(),
@@ -68,6 +68,15 @@ apiRouter.get("/catalog", async (req, res, next) => {
     const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
     const order = req.query.order === "alphabetical" ? "alphabetical" : "popular";
     res.json(await listCatalog(categoryId, order));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get("/promotions/:id", async (req, res, next) => {
+  try {
+    const { getPromotionDetails } = await import("./services/pos");
+    res.json(await getPromotionDetails(Number(req.params.id)));
   } catch (error) {
     next(error);
   }
@@ -427,9 +436,47 @@ apiRouter.get("/admin/categories", async (_req, res, next) => {
   }
 });
 
+apiRouter.get("/admin/promotions", async (_req, res, next) => {
+  try {
+    const { listPromotions } = await import("./services/pos");
+    res.json(await listPromotions());
+  } catch (error) {
+    next(error);
+  }
+});
+
+const promotionSchema = z.object({ productId: z.number().int().positive(), name: z.string().trim().min(1).max(160), comboPrice: z.number().nonnegative(), slots: z.array(z.object({ label: z.string().trim().min(1).max(100), categoryId: z.number().int().positive(), productIds: z.array(z.number().int().positive()).min(1) })).min(1).max(3) });
+
+apiRouter.post("/admin/promotions", async (req, res, next) => {
+  try {
+    const { createPromotion } = await import("./services/pos");
+    res.status(201).json(await createPromotion(parseBody(promotionSchema, req.body)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.patch("/admin/promotions/:id", async (req, res, next) => {
+  try {
+    const { updatePromotion } = await import("./services/pos");
+    res.json(await updatePromotion({ id: Number(req.params.id), ...parseBody(promotionSchema, req.body) }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.delete("/admin/promotions/:id", async (req, res, next) => {
+  try {
+    const { deactivatePromotion } = await import("./services/pos");
+    res.json(await deactivatePromotion(Number(req.params.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.post("/admin/categories", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional() }), req.body);
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isPromotion: z.boolean().optional() }), req.body);
     const { createCategory } = await import("./services/pos");
     res.status(201).json(await createCategory(input));
   } catch (error) {
@@ -439,7 +486,7 @@ apiRouter.post("/admin/categories", async (req, res, next) => {
 
 apiRouter.patch("/admin/categories/:id", async (req, res, next) => {
   try {
-    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.nullable().optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isActive: z.boolean().optional() }), req.body);
+    const input = parseBody(z.object({ name: z.string().trim().min(1).max(100).optional(), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(), imageUrl: mediaPathSchema.nullable().optional(), iconName: z.string().trim().max(64).optional(), sortOrder: z.number().int().optional(), isFeatured: z.boolean().optional(), isPromotion: z.boolean().optional(), isActive: z.boolean().optional() }), req.body);
     const { updateCategory } = await import("./services/pos");
     res.json(await updateCategory({ id: Number(req.params.id), ...input }));
   } catch (error) {

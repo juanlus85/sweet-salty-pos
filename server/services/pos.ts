@@ -22,6 +22,9 @@ import {
   loyverseVariantPrices,
   loyverseInventoryLevels,
   loyverseSyncState,
+  promotions,
+  promotionSlots,
+  promotionSlotProducts,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { issueFiscalTestRecord } from "./fiscal";
@@ -60,6 +63,8 @@ export async function listCatalog(categoryId?: number, order: "alphabetical" | "
       id: products.id,
       categoryId: products.categoryId,
       categoryName: categories.name,
+      categoryIsPromotion: categories.isPromotion,
+      promotionId: promotions.id,
       vatTypeId: products.vatTypeId,
       name: products.name,
       sku: products.sku,
@@ -76,6 +81,7 @@ export async function listCatalog(categoryId?: number, order: "alphabetical" | "
     })
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(promotions, and(eq(promotions.productId, products.id), eq(promotions.isActive, true)))
     .leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id))
     .where(and(...conditions))
     .orderBy(...orderBy);
@@ -91,6 +97,8 @@ export async function getFeaturedProducts() {
       id: products.id,
       categoryId: products.categoryId,
       categoryName: categories.name,
+      categoryIsPromotion: categories.isPromotion,
+      promotionId: promotions.id,
       vatTypeId: products.vatTypeId,
       name: products.name,
       sku: products.sku,
@@ -104,11 +112,12 @@ export async function getFeaturedProducts() {
     })
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(promotions, and(eq(promotions.productId, products.id), eq(promotions.isActive, true)))
     .leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id))
     .leftJoin(saleLines, eq(saleLines.productId, products.id))
     .leftJoin(sales, eq(sales.id, saleLines.saleId))
     .where(and(eq(products.isActive, true), eq(products.showInTpv, true)))
-    .groupBy(products.id, categories.name, inventoryBalances.quantityOnHand)
+    .groupBy(products.id, categories.name, categories.isPromotion, promotions.id, inventoryBalances.quantityOnHand)
     .orderBy(desc(soldUnits), desc(products.isFeatured), asc(products.name))
     .limit(12);
   return rows.map((row) => ({ ...row, stock: row.stock ?? "0.000", soldUnits: row.soldUnits ?? "0" }));
@@ -216,7 +225,7 @@ export async function getOrCreateCashSession(businessDate = getBusinessDate()) {
 }
 
 export type CheckoutInput = {
-  lines: Array<{ productId: number; quantity: number }>;
+  lines: Array<{ productId: number; quantity: number; unitPrice?: number; discountPercent?: number; pricingMode?: "normal" | "discount" | "cost" | "free" | "promotion"; promotionId?: number; promotionSelections?: number[] }>;
   paymentMethod: "cash" | "card";
   receivedAmount?: number;
   terminalReference?: string;
@@ -226,165 +235,120 @@ export type CheckoutInput = {
 export async function checkout(input: CheckoutInput) {
   const database = requireDb();
   const groupedLines = new Map<number, number>();
+  const lineInputs = new Map<number, CheckoutInput["lines"][number]>();
   for (const line of input.lines) {
-    if (!Number.isInteger(line.productId) || !Number.isFinite(line.quantity) || line.quantity <= 0) {
+    if (!Number.isInteger(line.productId) || !Number.isFinite(line.quantity) || line.quantity <= 0 || (line.unitPrice !== undefined && (!Number.isFinite(line.unitPrice) || line.unitPrice < 0)) || (line.discountPercent !== undefined && (!Number.isFinite(line.discountPercent) || line.discountPercent < 0 || line.discountPercent > 100))) {
       throw new Error("El ticket contiene una línea inválida.");
     }
+    if (line.promotionId) {
+      if (!line.promotionSelections?.length) throw new Error("La promoción necesita seleccionar todos sus artículos.");
+      continue;
+    }
     groupedLines.set(line.productId, (groupedLines.get(line.productId) ?? 0) + line.quantity);
+    lineInputs.set(line.productId, line);
   }
-  if (groupedLines.size === 0) throw new Error("El ticket está vacío.");
+  const promotionInputs = input.lines.filter((line) => line.promotionId);
+  if (groupedLines.size === 0 && promotionInputs.length === 0) throw new Error("El ticket está vacío.");
 
-  // La primera consulta o cobro posterior a las 07:00 abre automáticamente la nueva jornada.
-  // Se reutiliza el mismo mecanismo para conservar el fondo contado en el cierre anterior.
   const activeSession = await getOrCreateCashSession();
   return database.transaction(async (tx) => {
     const session = await tx.select().from(cashSessions).where(eq(cashSessions.id, activeSession.id)).limit(1);
     const cashSession = session[0];
-    if (!cashSession || cashSession.status !== "open") {
-      throw new Error("La caja de esta jornada ya está cerrada. La siguiente se abrirá automáticamente a las 07:00.");
-    }
+    if (!cashSession || cashSession.status !== "open") throw new Error("La caja de esta jornada ya está cerrada. La siguiente se abrirá automáticamente a las 07:00.");
 
-    const productIds = [...groupedLines.keys()];
-    const catalogRows = await tx
-      .select({ product: products, balance: inventoryBalances })
-      .from(products)
-      .leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id))
-      .where(and(inArray(products.id, productIds), eq(products.isActive, true)));
+    const normalProductIds = [...groupedLines.keys()];
+    const promotionIds = promotionInputs.map((line) => line.promotionId!).filter((id, index, list) => list.indexOf(id) === index);
+    const promotionRows = promotionIds.length ? await tx.select().from(promotions).where(and(inArray(promotions.id, promotionIds), eq(promotions.isActive, true))) : [];
+    if (promotionRows.length !== promotionIds.length) throw new Error("Una de las promociones ya no está activa.");
+    const promotionSlotRows = promotionIds.length ? await tx.select().from(promotionSlots).where(inArray(promotionSlots.promotionId, promotionIds)).orderBy(asc(promotionSlots.position)) : [];
+    const selectedComponentIds = promotionInputs.flatMap((line) => line.promotionSelections ?? []);
+    const componentProductIds = [...new Set(selectedComponentIds)];
+    const promotionProductIds = [...new Set(promotionInputs.map((line) => line.productId))];
+    const productIds = [...new Set([...normalProductIds, ...componentProductIds, ...promotionProductIds])];
+    const catalogRows = productIds.length ? await tx.select({ product: products, balance: inventoryBalances }).from(products).leftJoin(inventoryBalances, eq(inventoryBalances.productId, products.id)).where(and(inArray(products.id, productIds), eq(products.isActive, true))) : [];
+    if (catalogRows.length !== productIds.length) throw new Error("Uno o varios productos ya no están disponibles.");
+    const catalogById = new Map(catalogRows.map(({ product, balance }) => [product.id, { product, balance }]));
 
-    if (catalogRows.length !== productIds.length) {
-      throw new Error("Uno o varios productos ya no están disponibles.");
-    }
-
-    const computedLines = catalogRows.map(({ product, balance }) => {
+    type ComputedLine = { product: typeof products.$inferSelect; currentStock: number; soldQuantity: number; unitPrice: number; baseUnitPrice: number; discountPercent: number; pricingMode: string; unitCost: number; vatRate: number; lineTotal: number; lineVat: number; lineSubtotal: number; promotionId?: number; promotionSlotId?: number };
+    const computedLines: ComputedLine[] = [];
+    const stockRequirements = new Map<number, number>();
+    for (const line of input.lines) {
+      if (line.promotionId) {
+        const promotion = promotionRows.find((row) => row.id === line.promotionId)!;
+        const slots = promotionSlotRows.filter((slot) => slot.promotionId === promotion.id).sort((a, b) => a.position - b.position);
+        const selections = line.promotionSelections ?? [];
+        if (selections.length !== slots.length || selections.some((productId, index) => !slots[index])) throw new Error(`La promoción ${promotion.name} necesita ${slots.length} artículos.`);
+        for (let index = 0; index < slots.length; index += 1) {
+          const slot = slots[index];
+          const allowed = await tx.select({ productId: promotionSlotProducts.productId }).from(promotionSlotProducts).where(and(eq(promotionSlotProducts.slotId, slot.id), eq(promotionSlotProducts.productId, selections[index]))).limit(1);
+          if (!allowed[0]) throw new Error(`El artículo seleccionado no está permitido para «${slot.label}».`);
+          const selected = catalogById.get(selections[index]);
+          if (!selected) throw new Error("Uno de los artículos de la promoción no está disponible.");
+          const product = selected.product;
+          const quantityValue = line.quantity;
+          const currentStock = toNumber(selected.balance?.quantityOnHand);
+          const unitCost = toNumber(product.weightedAverageCost);
+          stockRequirements.set(product.id, (stockRequirements.get(product.id) ?? 0) + quantityValue);
+          computedLines.push({ product, currentStock, soldQuantity: quantityValue, unitPrice: 0, baseUnitPrice: 0, discountPercent: 0, pricingMode: "promotion_component", unitCost, vatRate: toNumber(product.vatRate), lineTotal: 0, lineVat: 0, lineSubtotal: 0, promotionId: promotion.id, promotionSlotId: slot.id });
+        }
+        const promoProduct = catalogRows.find(({ product }) => product.id === line.productId)?.product ?? catalogById.get(line.productId)?.product;
+        if (!promoProduct) throw new Error("No se encontró el artículo de la promoción.");
+        const comboPrice = toNumber(promotion.comboPrice);
+        const comboVatRate = toNumber(promoProduct.vatRate);
+        const comboVat = comboPrice * comboVatRate / (100 + comboVatRate);
+        computedLines.push({ product: promoProduct, currentStock: toNumber(catalogById.get(promoProduct.id)?.balance?.quantityOnHand), soldQuantity: line.quantity, unitPrice: comboPrice, baseUnitPrice: comboPrice, discountPercent: 0, pricingMode: "promotion", unitCost: 0, vatRate: comboVatRate, lineTotal: comboPrice * line.quantity, lineVat: comboVat * line.quantity, lineSubtotal: (comboPrice - comboVat) * line.quantity, promotionId: promotion.id });
+        continue;
+      }
+      const selected = catalogById.get(line.productId)!;
+      const product = selected.product;
       const soldQuantity = groupedLines.get(product.id) ?? 0;
-      const currentStock = toNumber(balance?.quantityOnHand);
-      const unitPrice = toNumber(product.salePrice);
+      const currentStock = toNumber(selected.balance?.quantityOnHand);
+      const lineInput = lineInputs.get(product.id);
+      const pricingMode = lineInput?.pricingMode ?? "normal";
+      const baseUnitPrice = pricingMode === "cost" ? toNumber(product.weightedAverageCost) : toNumber(lineInput?.unitPrice ?? product.salePrice);
+      const discountPercent = pricingMode === "free" ? 100 : Math.min(100, Math.max(0, toNumber(lineInput?.discountPercent)));
+      const unitPrice = baseUnitPrice * (1 - discountPercent / 100);
       const vatRate = toNumber(product.vatRate);
       const lineTotal = unitPrice * soldQuantity;
       const lineVat = lineTotal * (vatRate / (100 + vatRate));
-      return {
-        product,
-        currentStock,
-        soldQuantity,
-        unitPrice,
-        unitCost: toNumber(product.weightedAverageCost),
-        vatRate,
-        lineTotal,
-        lineVat,
-        lineSubtotal: lineTotal - lineVat,
-      };
-    });
+      stockRequirements.set(product.id, (stockRequirements.get(product.id) ?? 0) + soldQuantity);
+      computedLines.push({ product, currentStock, soldQuantity, unitPrice, baseUnitPrice, discountPercent, pricingMode, unitCost: toNumber(product.weightedAverageCost), vatRate, lineTotal, lineVat, lineSubtotal: lineTotal - lineVat });
+    }
 
+    for (const [productId, required] of stockRequirements) {
+      const currentStock = toNumber(catalogById.get(productId)?.balance?.quantityOnHand);
+      if (currentStock < 0) throw new Error("Stock inválido.");
+      if (required > currentStock && currentStock > 0) throw new Error(`Stock insuficiente para ${catalogById.get(productId)?.product.name ?? "un artículo"}.`);
+    }
     const subtotal = computedLines.reduce((sum, line) => sum + line.lineSubtotal, 0);
     const vatAmount = computedLines.reduce((sum, line) => sum + line.lineVat, 0);
     const totalAmount = computedLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const discountAmount = Math.max(0, computedLines.reduce((sum, line) => sum + ((line.baseUnitPrice - line.unitPrice) * line.soldQuantity), 0));
     const receivedAmount = input.paymentMethod === "cash" ? (input.receivedAmount ?? totalAmount) : totalAmount;
     if (receivedAmount < totalAmount) throw new Error("El importe recibido es menor que el total del ticket.");
     const changeAmount = input.paymentMethod === "cash" ? receivedAmount - totalAmount : 0;
     const issuedAt = new Date();
     const saleNumber = `SS-${cashSession.businessDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
-
-    const insertedSale = await tx.insert(sales).values({
-      saleNumber,
-      cashSessionId: cashSession.id,
-      subtotal: money(subtotal),
-      vatAmount: money(vatAmount),
-      totalAmount: money(totalAmount),
-      note: input.note?.trim() || null,
-      createdAt: issuedAt,
-    });
+    const insertedSale = await tx.insert(sales).values({ saleNumber, cashSessionId: cashSession.id, subtotal: money(subtotal), discountAmount: money(discountAmount), vatAmount: money(vatAmount), totalAmount: money(totalAmount), note: input.note?.trim() || null, createdAt: issuedAt });
     const saleId = Number(insertedSale[0].insertId);
-
     for (const line of computedLines) {
-      const quantityAfter = line.currentStock - line.soldQuantity;
-      await tx.insert(saleLines).values({
-        saleId,
-        productId: line.product.id,
-        productName: line.product.name,
-        sku: line.product.sku,
-        quantity: quantity(line.soldQuantity),
-        unitPrice: money(line.unitPrice),
-        unitCost: money(line.unitCost),
-        vatRate: money(line.vatRate),
-        lineSubtotal: money(line.lineSubtotal),
-        lineVat: money(line.lineVat),
-        lineTotal: money(line.lineTotal),
-      });
-      await tx
-        .update(inventoryBalances)
-        .set({ quantityOnHand: quantity(quantityAfter) })
-        .where(eq(inventoryBalances.productId, line.product.id));
-      await tx.insert(stockMovements).values({
-        productId: line.product.id,
-        movementType: "sale",
-        quantityDelta: quantity(-line.soldQuantity),
-        quantityBefore: quantity(line.currentStock),
-        quantityAfter: quantity(quantityAfter),
-        unitCost: money(line.unitCost),
-        sourceType: "sale",
-        sourceId: saleId,
-        note: `Venta ${saleNumber}`,
-      });
+      await tx.insert(saleLines).values({ saleId, productId: line.product.id, productName: line.pricingMode === "promotion_component" ? `↳ ${line.product.name}` : line.product.name, sku: line.product.sku, quantity: quantity(line.soldQuantity), unitPrice: money(line.unitPrice), unitCost: money(line.unitCost), vatRate: money(line.vatRate), lineSubtotal: money(line.lineSubtotal), lineVat: money(line.lineVat), lineTotal: money(line.lineTotal), discountPercent: money(line.discountPercent), pricingMode: line.pricingMode, promotionId: line.promotionId ?? null, promotionSlotId: line.promotionSlotId ?? null });
     }
-
-    await tx.insert(payments).values({
-      saleId,
-      method: input.paymentMethod,
-      amount: money(totalAmount),
-      receivedAmount: money(receivedAmount),
-      changeAmount: money(changeAmount),
-      terminalReference: input.paymentMethod === "card" ? input.terminalReference?.trim() || null : null,
-    });
-
-    if (input.paymentMethod === "cash") {
-      await tx.insert(cashMovements).values({
-        cashSessionId: cashSession.id,
-        movementType: "cash_sale",
-        amount: money(totalAmount),
-        sourceType: "sale",
-        sourceId: saleId,
-        note: `Venta ${saleNumber}`,
-      });
-    } else {
-      await tx
-        .update(cashSessions)
-        .set({ cardTotal: money(toNumber(cashSession.cardTotal) + totalAmount) })
-        .where(eq(cashSessions.id, cashSession.id));
+    for (const [productId, required] of stockRequirements) {
+      const selected = catalogById.get(productId)!;
+      const stockBefore = toNumber(selected.balance?.quantityOnHand);
+      const quantityAfter = stockBefore - required;
+      if (selected.balance) await tx.update(inventoryBalances).set({ quantityOnHand: quantity(quantityAfter) }).where(eq(inventoryBalances.productId, productId));
+      else await tx.insert(inventoryBalances).values({ productId, quantityOnHand: quantity(quantityAfter) });
+      await tx.insert(stockMovements).values({ productId, movementType: "sale", quantityDelta: quantity(-required), quantityBefore: quantity(stockBefore), quantityAfter: quantity(quantityAfter), unitCost: money(toNumber(selected.product.weightedAverageCost)), sourceType: "sale", sourceId: saleId, note: `Venta ${saleNumber}` });
     }
-
-    const fiscal = await issueFiscalTestRecord(tx, {
-      saleId,
-      issuedAt,
-      subtotal,
-      vatAmount,
-      totalAmount,
-      paymentMethod: input.paymentMethod,
-      lines: computedLines.map((line) => ({
-        productName: line.product.name,
-        sku: line.product.sku,
-        quantity: line.soldQuantity,
-        unitPrice: line.unitPrice,
-        vatRate: line.vatRate,
-        lineSubtotal: line.lineSubtotal,
-        lineVat: line.lineVat,
-        lineTotal: line.lineTotal,
-      })),
-    });
-
-    return {
-      saleId,
-      saleNumber,
-      fiscalInvoiceNumber: fiscal.fiscalInvoice.invoiceNumber,
-      subtotal: money(subtotal),
-      vatAmount: money(vatAmount),
-      totalAmount: money(totalAmount),
-      changeAmount: money(changeAmount),
-      paymentMethod: input.paymentMethod,
-      createdAt: new Date().toISOString(),
-    };
+    await tx.insert(payments).values({ saleId, method: input.paymentMethod, amount: money(totalAmount), receivedAmount: money(receivedAmount), changeAmount: money(changeAmount), terminalReference: input.paymentMethod === "card" ? input.terminalReference?.trim() || null : null });
+    if (input.paymentMethod === "cash") await tx.insert(cashMovements).values({ cashSessionId: cashSession.id, movementType: "cash_sale", amount: money(totalAmount), sourceType: "sale", sourceId: saleId, note: `Venta ${saleNumber}` });
+    else await tx.update(cashSessions).set({ cardTotal: money(toNumber(cashSession.cardTotal) + totalAmount) }).where(eq(cashSessions.id, cashSession.id));
+    const fiscal = await issueFiscalTestRecord(tx, { saleId, issuedAt, subtotal, vatAmount, totalAmount, paymentMethod: input.paymentMethod, lines: computedLines.map((line) => ({ productName: line.product.name, sku: line.product.sku, quantity: line.soldQuantity, unitPrice: line.unitPrice, vatRate: line.vatRate, lineSubtotal: line.lineSubtotal, lineVat: line.lineVat, lineTotal: line.lineTotal })) });
+    return { saleId, saleNumber, fiscalInvoiceNumber: fiscal.fiscalInvoice.invoiceNumber, subtotal: money(subtotal), vatAmount: money(vatAmount), totalAmount: money(totalAmount), changeAmount: money(changeAmount), paymentMethod: input.paymentMethod, createdAt: new Date().toISOString() };
   });
 }
-
 export async function getCurrentCashSummary() {
   const database = requireDb();
   const session = await getOrCreateCashSession();
@@ -635,7 +599,7 @@ export async function updateSmtpSettings(input: { smtpHost?: string | null; smtp
   return getPosSettings();
 }
 
-export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean }) {
+export async function createCategory(input: { name: string; color?: string; imageUrl?: string; iconName?: string; sortOrder?: number; isFeatured?: boolean; isPromotion?: boolean }) {
   const database = requireDb();
   const lastOrder = await database.select({ maxOrder: sql<number>`coalesce(max(${categories.sortOrder}), -1)` }).from(categories);
   const inserted = await database.insert(categories).values({
@@ -645,11 +609,12 @@ export async function createCategory(input: { name: string; color?: string; imag
     iconName: input.iconName?.trim() || "Package",
     sortOrder: input.sortOrder ?? Number(lastOrder[0]?.maxOrder ?? -1) + 1,
     isFeatured: input.isFeatured ?? false,
+    isPromotion: input.isPromotion ?? false,
   });
   return { id: Number(inserted[0].insertId) };
 }
 
-export async function updateCategory(input: { id: number; name?: string; color?: string; imageUrl?: string | null; iconName?: string; sortOrder?: number; isFeatured?: boolean; isActive?: boolean }) {
+export async function updateCategory(input: { id: number; name?: string; color?: string; imageUrl?: string | null; iconName?: string; sortOrder?: number; isFeatured?: boolean; isPromotion?: boolean; isActive?: boolean }) {
   const database = requireDb();
   const updateSet: Partial<typeof categories.$inferInsert> = {};
   if (input.name !== undefined) updateSet.name = input.name.trim();
@@ -658,6 +623,7 @@ export async function updateCategory(input: { id: number; name?: string; color?:
   if (input.iconName !== undefined) updateSet.iconName = input.iconName.trim() || "Package";
   if (input.sortOrder !== undefined) updateSet.sortOrder = input.sortOrder;
   if (input.isFeatured !== undefined) updateSet.isFeatured = input.isFeatured;
+  if (input.isPromotion !== undefined) updateSet.isPromotion = input.isPromotion;
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
   if (input.isActive === false) {
     await database.transaction(async (tx) => {
@@ -668,6 +634,70 @@ export async function updateCategory(input: { id: number; name?: string; color?:
   }
   if (Object.keys(updateSet).length > 0) await database.update(categories).set(updateSet).where(eq(categories.id, input.id));
   return { success: true };
+}
+
+export async function listPromotions() {
+  const database = requireDb();
+  const rows = await database.select({ promotion: promotions, productName: products.name, categoryId: products.categoryId, categoryName: categories.name }).from(promotions).innerJoin(products, eq(products.id, promotions.productId)).innerJoin(categories, eq(categories.id, products.categoryId)).orderBy(asc(promotions.name));
+  const slotRows = rows.length ? await database.select().from(promotionSlots).where(inArray(promotionSlots.promotionId, rows.map((row) => row.promotion.id))).orderBy(asc(promotionSlots.position)) : [];
+  const slotProductRows = slotRows.length ? await database.select({ slotId: promotionSlotProducts.slotId, productId: promotionSlotProducts.productId, productName: products.name }).from(promotionSlotProducts).innerJoin(products, eq(products.id, promotionSlotProducts.productId)).where(inArray(promotionSlotProducts.slotId, slotRows.map((slot) => slot.id))).orderBy(asc(products.name)) : [];
+  return rows.map((row) => ({ ...row.promotion, productName: row.productName, categoryId: row.categoryId, categoryName: row.categoryName, slots: slotRows.filter((slot) => slot.promotionId === row.promotion.id).map((slot) => ({ ...slot, products: slotProductRows.filter((product) => product.slotId === slot.id) })) }));
+}
+
+export async function createPromotion(input: { productId: number; name: string; comboPrice: number; slots: Array<{ label: string; categoryId: number; productIds: number[] }> }) {
+  const database = requireDb();
+  if (input.slots.length < 1 || input.slots.length > 3) throw new Error("Una promoción debe tener entre 1 y 3 familias.");
+  const promotionProduct = await database.select().from(products).innerJoin(categories, eq(categories.id, products.categoryId)).where(and(eq(products.id, input.productId), eq(categories.isPromotion, true))).limit(1);
+  if (!promotionProduct[0]) throw new Error("El artículo de la promoción debe pertenecer a una familia marcada como Promociones.");
+  const categoryIds = [...new Set(input.slots.map((slot) => slot.categoryId))];
+  const categoryRows = await database.select().from(categories).where(and(inArray(categories.id, categoryIds), eq(categories.isActive, true)));
+  if (categoryRows.length !== categoryIds.length) throw new Error("Una familia de la promoción no existe o está inactiva.");
+  const productIds = [...new Set(input.slots.flatMap((slot) => slot.productIds))];
+  if (productIds.length === 0 || productIds.length > 100) throw new Error("Selecciona al menos un artículo permitido.");
+  const productRows = await database.select({ id: products.id, categoryId: products.categoryId, isActive: products.isActive }).from(products).where(and(inArray(products.id, productIds), eq(products.isActive, true)));
+  if (productRows.length !== productIds.length) throw new Error("Uno de los artículos permitidos no existe o está inactivo.");
+  for (const slot of input.slots) {
+    if (!slot.label.trim() || slot.productIds.length === 0) throw new Error("Cada familia debe tener una etiqueta y al menos un artículo permitido.");
+    if (slot.productIds.some((productId) => productRows.find((product) => product.id === productId)?.categoryId !== slot.categoryId)) throw new Error("Los artículos permitidos deben pertenecer a la familia seleccionada.");
+  }
+  return database.transaction(async (tx) => {
+    const inserted = await tx.insert(promotions).values({ productId: input.productId, name: input.name.trim(), comboPrice: money(input.comboPrice), isActive: true });
+    const promotionId = Number(inserted[0].insertId);
+    for (const [index, slot] of input.slots.entries()) {
+      const insertedSlot = await tx.insert(promotionSlots).values({ promotionId, position: index + 1, label: slot.label.trim(), categoryId: slot.categoryId });
+      const slotId = Number(insertedSlot[0].insertId);
+      await tx.insert(promotionSlotProducts).values(slot.productIds.map((productId) => ({ slotId, productId })));
+    }
+    return { id: promotionId };
+  });
+}
+
+export async function updatePromotion(input: { id: number; productId: number; name: string; comboPrice: number; slots: Array<{ label: string; categoryId: number; productIds: number[] }> }) {
+  const existing = await listPromotions();
+  if (!existing.find((promotion) => promotion.id === input.id)) throw new Error("No se encontró la promoción.");
+  return requireDb().transaction(async (tx) => {
+    await tx.delete(promotionSlotProducts).where(inArray(promotionSlotProducts.slotId, (await tx.select({ id: promotionSlots.id }).from(promotionSlots).where(eq(promotionSlots.promotionId, input.id))).map((slot) => slot.id)));
+    await tx.delete(promotionSlots).where(eq(promotionSlots.promotionId, input.id));
+    await tx.update(promotions).set({ productId: input.productId, name: input.name.trim(), comboPrice: money(input.comboPrice) }).where(eq(promotions.id, input.id));
+    for (const [index, slot] of input.slots.entries()) {
+      const insertedSlot = await tx.insert(promotionSlots).values({ promotionId: input.id, position: index + 1, label: slot.label.trim(), categoryId: slot.categoryId });
+      await tx.insert(promotionSlotProducts).values(slot.productIds.map((productId) => ({ slotId: Number(insertedSlot[0].insertId), productId })));
+    }
+    return { success: true };
+  });
+}
+
+export async function deactivatePromotion(id: number) {
+  const database = requireDb();
+  await database.update(promotions).set({ isActive: false }).where(eq(promotions.id, id));
+  return { success: true };
+}
+
+export async function getPromotionDetails(id: number) {
+  const rows = await listPromotions();
+  const promotion = rows.find((item) => item.id === id && item.isActive);
+  if (!promotion) throw new Error("No se encontró la promoción activa.");
+  return promotion;
 }
 
 export async function reorderCategories(items: Array<{ id: number; sortOrder: number }>) {

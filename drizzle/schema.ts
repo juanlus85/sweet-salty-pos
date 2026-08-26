@@ -343,6 +343,7 @@ export const categories = mysqlTable("pos_categories", {
   iconName: varchar("icon_name", { length: 64 }).notNull().default("Package"),
   sortOrder: int("sort_order").notNull().default(0),
   isFeatured: boolean("is_featured").notNull().default(false),
+  isPromotion: boolean("is_promotion").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
@@ -509,8 +510,44 @@ export const saleLines = mysqlTable("pos_sale_lines", {
   lineSubtotal: money("line_subtotal").notNull(),
   lineVat: money("line_vat").notNull().default("0.00"),
   lineTotal: money("line_total").notNull(),
+  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).notNull().default("0.00"),
+  pricingMode: varchar("pricing_mode", { length: 24 }).notNull().default("normal"),
+  promotionId: int("promotion_id"),
+  promotionSlotId: int("promotion_slot_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const promotions = mysqlTable("pos_promotions", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("product_id").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  comboPrice: money("combo_price").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_promotions_product_unique").on(table.productId),
+]);
+
+export const promotionSlots = mysqlTable("pos_promotion_slots", {
+  id: int("id").autoincrement().primaryKey(),
+  promotionId: int("promotion_id").notNull(),
+  position: int("position").notNull(),
+  label: varchar("label", { length: 100 }).notNull(),
+  categoryId: int("category_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_promotion_slots_position_unique").on(table.promotionId, table.position),
+]);
+
+export const promotionSlotProducts = mysqlTable("pos_promotion_slot_products", {
+  id: int("id").autoincrement().primaryKey(),
+  slotId: int("slot_id").notNull(),
+  productId: int("product_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_promotion_slot_products_unique").on(table.slotId, table.productId),
+]);
 
 export const payments = mysqlTable("pos_payments", {
   id: int("id").autoincrement().primaryKey(),
