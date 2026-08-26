@@ -512,3 +512,24 @@ button:disabled { cursor: not-allowed; }
 .image-preview--has-image { min-height:210px; }
 @media (max-width:700px) { .image-crop-controls { grid-template-columns:1fr; } .product-image-editor-preview img { height:200px; } }
 @media (min-width:701px) and (max-width:1100px) { .image-crop-controls { grid-template-columns:1fr 1fr; } }
+
+/* Edición rápida del catálogo */
+.products-quick-table th,
+.products-quick-table td { vertical-align: middle; }
+.products-quick-table th { white-space: nowrap; }
+.quick-cell-input,
+.quick-cell-select { box-sizing: border-box; min-width: 92px; min-height: 36px; padding: 7px 8px; border: 1px solid #dbe6db; border-radius: 8px; color: #2b4933; background: #fff; font: inherit; font-size: 12px; }
+.quick-cell-input:focus,
+.quick-cell-select:focus { border-color: #82ae88; outline: none; box-shadow: 0 0 0 3px rgba(81,141,90,.10); }
+.quick-cell-input--money { width: 94px; text-align: right; font-family: "DM Mono", monospace; }
+.quick-cell-input--integer { width: 76px; text-align: right; font-family: "DM Mono", monospace; }
+.quick-cell-select { max-width: 170px; }
+.quick-cell-select--small { min-width: 72px; width: 72px; }
+.quick-edit-hint { display: block; margin-top: 10px; color: #758578; font-size: 11px; }
+.products-quick-table .table-product { min-width: 180px; }
+.products-quick-table .table-actions { white-space: nowrap; }
+@media (max-width: 760px) {
+  .products-quick-table { min-width: 1120px; }
+  .quick-cell-input, .quick-cell-select { min-height: 40px; }
+  .quick-edit-hint { padding: 0 4px; }
+}
