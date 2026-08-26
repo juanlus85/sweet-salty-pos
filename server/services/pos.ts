@@ -45,11 +45,12 @@ export function getBusinessDate(now = new Date()) {
 
 export async function listCategories() {
   const database = requireDb();
-  return database
-    .select()
-    .from(categories)
-    .where(eq(categories.isActive, true))
-    .orderBy(asc(categories.sortOrder), asc(categories.name));
+  const [categoryRows, productCounts] = await Promise.all([
+    database.select().from(categories).where(eq(categories.isActive, true)).orderBy(asc(categories.sortOrder), asc(categories.name)),
+    database.select({ categoryId: products.categoryId, count: sql<number>`count(*)` }).from(products).where(eq(products.isActive, true)).groupBy(products.categoryId),
+  ]);
+  const countByCategory = new Map(productCounts.map((row) => [row.categoryId, Number(row.count)]));
+  return categoryRows.filter((category) => normalizeCatalogText(category.name) !== "articulos sin asignar" || (countByCategory.get(category.id) ?? 0) > 0);
 }
 
 export async function listCatalog(categoryId?: number, order: "alphabetical" | "popular" = "popular") {
@@ -1218,6 +1219,13 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
       return fallbackCategory;
     };
 
+    const importedCategoryIds = localCategories.filter((category) => Boolean(category.loyverseId)).map((category) => category.id);
+    const fallback = await ensureFallbackCategory();
+    if (importedCategoryIds.length) {
+      await tx.update(products).set({ categoryId: fallback.id }).where(inArray(products.categoryId, importedCategoryIds));
+      await tx.update(categories).set({ isActive: false }).where(inArray(categories.id, importedCategoryIds));
+    }
+
     const productByVariant = new Map<string, typeof localProducts[number]>();
     const productBySku = new Map<string, typeof localProducts[number]>();
     const productByBarcode = new Map<string, typeof localProducts[number]>();
@@ -1254,7 +1262,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         if (local && local.loyverseVariantId && local.loyverseVariantId !== variant.loyverseId) local = undefined;
         try {
           const currentCategory = local ? localCategoryById.get(local.categoryId) : undefined;
-          const categoryId = local && currentCategory && !currentCategory.loyverseId ? local.categoryId : (await ensureFallbackCategory()).id;
+          const categoryId = local && currentCategory && !currentCategory.loyverseId ? local.categoryId : fallback.id;
           if (!local) {
           const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) });
             const productId = Number(inserted[0].insertId);
