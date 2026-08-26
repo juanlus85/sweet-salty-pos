@@ -600,3 +600,77 @@ export async function getLoyverseDailyAnalysis() {
   const report = await getLoyverseReports({ period: "day" });
   return { businessDate: new Date().toISOString().slice(0, 10), sessionId: 0, status: "open" as const, totalSold: report.totals.totalSold, cashSold: report.totals.cash, cardSold: report.totals.card, expectedCash: report.totals.cash, tickets: report.totals.tickets, hourly: report.series.map((entry) => ({ hour: 0, label: entry.label, total: entry.total, tickets: entry.tickets, cash: entry.cash, card: entry.card })), topProducts: report.topProducts.slice(0, 10) };
 }
+
+
+function mergeMoney(left: string | number, right: string | number) { return (Number(left) + Number(right)).toFixed(2); }
+
+function mergeSeriesRows(remote: Array<{ label: string; total: string; tickets: number; cash: string; card: string }>, local: Array<{ label: string; total: string; tickets: number; cash: string; card: string }>) {
+  const map = new Map<string, { label: string; total: number; tickets: number; cash: number; card: number }>();
+  for (const row of [...remote, ...local]) {
+    const current = map.get(row.label) || { label: row.label, total: 0, tickets: 0, cash: 0, card: 0 };
+    current.total += Number(row.total); current.tickets += row.tickets; current.cash += Number(row.cash); current.card += Number(row.card); map.set(row.label, current);
+  }
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label)).map((row) => ({ ...row, total: row.total.toFixed(2), cash: row.cash.toFixed(2), card: row.card.toFixed(2) }));
+}
+
+function mergeProductRows(remote: Array<{ productId: number | null; productName: string; units: string; revenue: string; cost: string; margin: string }>, local: Array<{ productId: number | null; productName: string; units: string; revenue: string; cost: string; margin: string }>) {
+  const map = new Map<string, { productId: number | null; productName: string; units: number; revenue: number; cost: number }>();
+  for (const row of [...remote, ...local]) {
+    const key = row.productName.trim().toLocaleLowerCase("es");
+    const current = map.get(key) || { productId: row.productId, productName: row.productName, units: 0, revenue: 0, cost: 0 };
+    current.units += Number(row.units); current.revenue += Number(row.revenue); current.cost += Number(row.cost); map.set(key, current);
+  }
+  return [...map.values()].sort((a, b) => b.revenue - a.revenue).map((row) => ({ productId: row.productId, productName: row.productName, units: row.units.toFixed(3), revenue: row.revenue.toFixed(2), cost: row.cost.toFixed(2), margin: (row.revenue - row.cost).toFixed(2) }));
+}
+
+function mergeFamilyRows(remote: Array<{ family: string; units: string; revenue: string; cost: string; margin: string }>, local: Array<{ family: string; units: string; revenue: string; cost: string; margin: string }>) {
+  const map = new Map<string, { family: string; units: number; revenue: number; cost: number }>();
+  for (const row of [...remote, ...local]) {
+    const key = row.family.trim().toLocaleLowerCase("es");
+    const current = map.get(key) || { family: row.family, units: 0, revenue: 0, cost: 0 };
+    current.units += Number(row.units); current.revenue += Number(row.revenue); current.cost += Number(row.cost); map.set(key, current);
+  }
+  return [...map.values()].sort((a, b) => b.revenue - a.revenue).map((row) => ({ family: row.family, units: row.units.toFixed(3), revenue: row.revenue.toFixed(2), cost: row.cost.toFixed(2), margin: (row.revenue - row.cost).toFixed(2) }));
+}
+
+export async function getCombinedReports(input: { period?: string; from?: string; to?: string; source?: "all" | "loyverse" | "local" } = {}) {
+  const source = input.source || "all";
+  const emptyReport = { period: input.period || "quarter", from: input.from || null, to: input.to || null, totals: { totalSold: "0.00", subtotal: "0.00", vat: "0.00", cash: "0.00", card: "0.00", cost: "0.00", margin: "0.00", tickets: 0 }, series: [], topProducts: [], byFamily: [], vatBreakdown: [] };
+  const [{ getReports }, remote] = await Promise.all([import("./pos"), source === "local" ? Promise.resolve(emptyReport) : getLoyverseReports(input)]);
+  const local = source === "loyverse" ? emptyReport : await getReports(input);
+  return {
+    period: remote.period, from: remote.from || local.from, to: remote.to || local.to,
+    totals: {
+      totalSold: mergeMoney(remote.totals.totalSold, local.totals.totalSold), subtotal: mergeMoney(remote.totals.subtotal, local.totals.subtotal), vat: mergeMoney(remote.totals.vat, local.totals.vat), cash: mergeMoney(remote.totals.cash, local.totals.cash), card: mergeMoney(remote.totals.card, local.totals.card), cost: mergeMoney(remote.totals.cost, local.totals.cost), margin: mergeMoney(remote.totals.margin, local.totals.margin), tickets: remote.totals.tickets + local.totals.tickets,
+    },
+    series: mergeSeriesRows(remote.series, local.series),
+    topProducts: mergeProductRows(remote.topProducts, local.topProducts),
+    byFamily: mergeFamilyRows(remote.byFamily, local.byFamily),
+    vatBreakdown: [...remote.vatBreakdown, ...local.vatBreakdown],
+  };
+}
+
+export async function getCombinedSalesByProduct() { return (await getCombinedReports({ period: "year" })).topProducts; }
+
+export async function getCombinedDailyAnalysis() {
+  const [{ getDailyAnalysis }, remote] = await Promise.all([import("./pos"), getLoyverseDailyAnalysis()]);
+  const local = await getDailyAnalysis();
+  return {
+    businessDate: local.businessDate, sessionId: local.sessionId, status: local.status,
+    totalSold: mergeMoney(remote.totalSold, local.totalSold), cashSold: mergeMoney(remote.cashSold, local.cashSold), cardSold: mergeMoney(remote.cardSold, local.cardSold), expectedCash: mergeMoney(remote.expectedCash, local.expectedCash), tickets: remote.tickets + local.tickets,
+    hourly: remote.hourly.map((row, index) => ({ hour: row.hour, label: row.label, total: mergeMoney(row.total, local.hourly[index]?.total || "0"), tickets: row.tickets + (local.hourly[index]?.tickets || 0), cash: mergeMoney(row.cash, local.hourly[index]?.cash || "0"), card: mergeMoney(row.card, local.hourly[index]?.card || "0") })),
+    topProducts: mergeProductRows(remote.topProducts.map((row) => ({ ...row, cost: "0", margin: row.revenue })), local.topProducts.map((row) => ({ ...row, cost: "0", margin: row.revenue }))).slice(0, 10).map((row) => ({ productId: row.productId, productName: row.productName, units: row.units, revenue: row.revenue })),
+  };
+}
+
+export async function getCombinedRecentSales(limit = 100) {
+  const [{ getRecentSales }, remote] = await Promise.all([import("./pos"), getLoyverseRecentSales(Math.min(limit * 2, 500))]);
+  const local = await getRecentSales(Math.min(limit * 2, 500));
+  return [...remote.map((row) => ({ ...row, id: -Math.abs(row.id), source: "loyverse" as const })), ...local.map((row) => ({ ...row, source: "local" as const }))].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, limit);
+}
+
+export async function getCombinedReceiptDetails(id: number) {
+  if (id < 0) return getLoyverseReceiptDetails(Math.abs(id));
+  const { getSaleDetails } = await import("./pos");
+  return { ...(await getSaleDetails(id)), source: "local" as const };
+}
