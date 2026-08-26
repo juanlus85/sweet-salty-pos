@@ -101,7 +101,8 @@ apiRouter.post("/checkout", async (req, res, next) => {
 
 apiRouter.get("/sales/:id", async (req, res, next) => {
   try {
-    res.json(await getSaleDetails(Number(req.params.id)));
+    const { shouldUseLoyverseSales, getLoyverseReceiptDetails } = await import("./services/loyverse");
+    res.json(await (await shouldUseLoyverseSales() ? getLoyverseReceiptDetails(Number(req.params.id)) : getSaleDetails(Number(req.params.id))));
   } catch (error) {
     next(error);
   }
@@ -110,7 +111,9 @@ apiRouter.get("/sales/:id", async (req, res, next) => {
 apiRouter.get("/sales", async (req, res, next) => {
   try {
     const requestedLimit = req.query.limit ? Number(req.query.limit) : 20;
-    res.json(await getRecentSales(Number.isFinite(requestedLimit) ? requestedLimit : 20));
+    const limit = Number.isFinite(requestedLimit) ? requestedLimit : 20;
+    const { shouldUseLoyverseSales, getLoyverseRecentSales } = await import("./services/loyverse");
+    res.json(await (await shouldUseLoyverseSales() ? getLoyverseRecentSales(limit) : getRecentSales(limit)));
   } catch (error) {
     next(error);
   }
@@ -137,7 +140,8 @@ apiRouter.post("/sales/:id/email", async (req, res, next) => {
 
 apiRouter.get("/admin/analysis/daily", async (_req, res, next) => {
   try {
-    res.json(await getDailyAnalysis());
+    const { shouldUseLoyverseSales, getLoyverseDailyAnalysis } = await import("./services/loyverse");
+    res.json(await (await shouldUseLoyverseSales() ? getLoyverseDailyAnalysis() : getDailyAnalysis()));
   } catch (error) {
     next(error);
   }
@@ -148,7 +152,8 @@ apiRouter.get("/admin/reports", async (req, res, next) => {
     const period = typeof req.query.period === "string" ? req.query.period : "quarter";
     const from = typeof req.query.from === "string" ? req.query.from : undefined;
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
-    res.json(await getReports({ period, from, to }));
+    const { shouldUseLoyverseSales, getLoyverseReports } = await import("./services/loyverse");
+    res.json(await (await shouldUseLoyverseSales() ? getLoyverseReports({ period, from, to }) : getReports({ period, from, to })));
   } catch (error) {
     next(error);
   }
@@ -517,8 +522,9 @@ apiRouter.post("/admin/suppliers", async (req, res, next) => {
 
 apiRouter.get("/admin/reports/sales-by-product", async (_req, res, next) => {
   try {
+    const { shouldUseLoyverseSales, getLoyverseSalesByProduct } = await import("./services/loyverse");
     const { listSalesReport } = await import("./services/pos");
-    res.json(await listSalesReport());
+    res.json(await (await shouldUseLoyverseSales() ? getLoyverseSalesByProduct() : listSalesReport()));
   } catch (error) {
     next(error);
   }

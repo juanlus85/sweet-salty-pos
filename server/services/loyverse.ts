@@ -477,6 +477,9 @@ export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: 
   });
   const selectedReceipts = selectedStoreId ? receipts.filter((receipt) => !receipt.storeLoyverseId || receipt.storeLoyverseId === selectedStoreId) : receipts;
   const selectedReceiptIds = new Set(selectedReceipts.map((receipt) => receipt.id));
+  const allPayments = selectedReceipts.length ? await database.select().from(loyverseReceiptPayments) : [];
+  const cashTotal = selectedReceipts.reduce((sum, receipt) => sum + (unifiedPaymentMethod(receipt.id, allPayments) === "cash" ? Number(receipt.totalMoney) : 0), 0);
+  const cardTotal = selectedReceipts.reduce((sum, receipt) => sum + (unifiedPaymentMethod(receipt.id, allPayments) === "card" ? Number(receipt.totalMoney) : 0), 0);
   const selectedLines = lines.filter((line) => selectedReceiptIds.has(line.receiptId));
   const totalSold = selectedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalMoney), 0);
   const totalTax = selectedReceipts.reduce((sum, receipt) => sum + Number(receipt.totalTax), 0);
@@ -500,7 +503,100 @@ export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: 
     selectedStoreId,
     stores,
     catalog,
-    sales: { from: range.from?.toISOString() || null, to: range.to?.toISOString() || null, tickets: selectedReceipts.length, totalSold, totalTax, totalDiscount, totalCost, margin: totalSold - totalCost, byHour: [...hourMap.values()].sort((a, b) => a.hour.localeCompare(b.hour)), byDate: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)), topProducts: [...topProductsMap.values()].sort((a, b) => b.units - a.units).slice(0, 50), recentReceipts: selectedReceipts.slice(0, 100) },
+    sales: { from: range.from?.toISOString() || null, to: range.to?.toISOString() || null, tickets: selectedReceipts.length, totalSold, totalTax, totalDiscount, totalCost, cash: cashTotal, card: cardTotal, margin: totalSold - totalCost, byHour: [...hourMap.values()].sort((a, b) => a.hour.localeCompare(b.hour)), byDate: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)), topProducts: [...topProductsMap.values()].sort((a, b) => b.units - a.units).slice(0, 50), recentReceipts: selectedReceipts.slice(0, 100) },
     updatedAt: (await getSyncRow())?.updatedAt || null,
   };
+}
+
+
+
+
+
+
+type UnifiedReportRange = { from?: Date; to?: Date };
+
+function unifiedMoney(value: number) { return value.toFixed(2); }
+
+function unifiedRange(period = "quarter", from?: string, to?: string): UnifiedReportRange {
+  if (period === "custom" && from && to) return { from: new Date(`${from}T00:00:00Z`), to: new Date(`${to}T23:59:59Z`) };
+  const end = new Date();
+  const start = new Date(end);
+  if (period === "day") start.setDate(end.getDate());
+  else if (period === "week") start.setDate(end.getDate() - 6);
+  else if (period === "month") start.setDate(1);
+  else if (period === "year") { start.setMonth(0, 1); }
+  else { start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1); }
+  start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999);
+  return { from: start, to: end };
+}
+
+function unifiedPaymentMethod(receiptId: number, payments: typeof loyverseReceiptPayments.$inferSelect[]) {
+  const labels = payments.filter((payment) => payment.receiptId === receiptId).map((payment) => {
+    const raw = asObject(payment.rawData);
+    return `${asString(raw.type) || ""} ${asString(raw.name) || ""} ${asString(raw.payment_type) || ""}`.toLowerCase();
+  }).join(" ");
+  if (/card|tarjet|credit|debit|visa|master/.test(labels)) return "card" as const;
+  if (/cash|efect|contado/.test(labels)) return "cash" as const;
+  return null;
+}
+
+export async function shouldUseLoyverseSales() {
+  const config = await getRuntimeConfig();
+  if (!config.token) return false;
+  const database = requireDb();
+  return (await database.select({ id: loyverseReceipts.id }).from(loyverseReceipts).limit(1)).length > 0;
+}
+
+export async function getLoyverseRecentSales(limit = 100) {
+  const database = requireDb();
+  const rows = await database.select().from(loyverseReceipts).orderBy(desc(loyverseReceipts.receiptDate)).limit(Math.max(1, Math.min(limit, 500)));
+  const ids = rows.map((row) => row.id);
+  const payments = ids.length ? await database.select().from(loyverseReceiptPayments) : [];
+  return rows.map((row) => ({ id: row.id, saleNumber: row.receiptNumber, totalAmount: row.totalMoney, status: row.receiptType === "REFUND" ? "refunded" : "completed", createdAt: (row.receiptDate || row.updatedAt || row.createdAt).toISOString(), method: unifiedPaymentMethod(row.id, payments), source: "loyverse" as const }));
+}
+
+export async function getLoyverseReceiptDetails(receiptId: number) {
+  const database = requireDb();
+  const rows = await database.select().from(loyverseReceipts).where(eq(loyverseReceipts.id, receiptId)).limit(1);
+  if (!rows[0]) throw new Error("No se encontró el ticket de Loyverse.");
+  const lines = await database.select().from(loyverseReceiptLines).where(eq(loyverseReceiptLines.receiptId, receiptId)).orderBy(asc(loyverseReceiptLines.lineIndex));
+  const payments = await database.select().from(loyverseReceiptPayments).where(eq(loyverseReceiptPayments.receiptId, receiptId));
+  const receipt = rows[0];
+  return { ...receipt, saleNumber: receipt.receiptNumber, totalAmount: receipt.totalMoney, subtotal: unifiedMoney(Number(receipt.totalMoney) - Number(receipt.totalTax)), vatAmount: receipt.totalTax, status: receipt.receiptType === "REFUND" ? "refunded" : "completed", createdAt: (receipt.receiptDate || receipt.updatedAt || receipt.createdAt).toISOString(), payment: { method: unifiedPaymentMethod(receipt.id, payments), amount: receipt.totalMoney }, lines: lines.map((line) => ({ id: line.id, productName: line.itemName, quantity: line.quantity, unitPrice: line.price, lineVat: "0.00", lineTotal: line.totalMoney })) };
+}
+
+export async function getLoyverseReports(input: { period?: string; from?: string; to?: string } = {}) {
+  const period = input.period || "quarter";
+  const range = unifiedRange(period, input.from, input.to);
+  const dashboard = await getLoyverseDashboard(range);
+  const sales = dashboard.sales;
+  const totalSold = Number(sales.totalSold);
+  const totalTax = Number(sales.totalTax);
+  const totalCost = Number(sales.totalCost);
+  return {
+    period, from: range.from?.toISOString().slice(0, 10) || null, to: range.to?.toISOString().slice(0, 10) || null,
+    totals: { totalSold: unifiedMoney(totalSold), subtotal: unifiedMoney(totalSold - totalTax), vat: unifiedMoney(totalTax), cash: unifiedMoney(Number(sales.cash || 0)), card: unifiedMoney(Number(sales.card || 0)), cost: unifiedMoney(totalCost), margin: unifiedMoney(totalSold - totalCost), tickets: sales.tickets },
+    series: sales.byDate.map((entry) => ({ label: entry.date, total: unifiedMoney(Number(entry.total)), tickets: entry.tickets, cash: "0.00", card: "0.00" })),
+    topProducts: sales.topProducts.map((entry) => ({ productId: null, productName: entry.productName, units: Number(entry.units).toFixed(3), revenue: unifiedMoney(Number(entry.revenue)), cost: unifiedMoney(Number(entry.cost)), margin: unifiedMoney(Number(entry.revenue) - Number(entry.cost)) })),
+    byFamily: (() => {
+      const familyMap = new Map<string, { units: number; revenue: number; cost: number }>();
+      for (const product of sales.topProducts) {
+        const family = dashboard.catalog.find((catalogItem) => catalogItem.name === product.productName)?.category || "Sin familia";
+        const current = familyMap.get(family) || { units: 0, revenue: 0, cost: 0 };
+        current.units += Number(product.units); current.revenue += Number(product.revenue); current.cost += Number(product.cost); familyMap.set(family, current);
+      }
+      return [...familyMap.entries()].sort(([, left], [, right]) => right.revenue - left.revenue).map(([family, value]) => ({ family, units: value.units.toFixed(3), revenue: unifiedMoney(value.revenue), cost: unifiedMoney(value.cost), margin: unifiedMoney(value.revenue - value.cost) }));
+    })(),
+    vatBreakdown: [{ vat: "IVA según recibos Loyverse", revenue: unifiedMoney(totalSold), vatAmount: unifiedMoney(totalTax), units: "0.000" }],
+  };
+}
+
+export async function getLoyverseSalesByProduct() {
+  const report = await getLoyverseReports({ period: "year" });
+  return report.topProducts;
+}
+
+export async function getLoyverseDailyAnalysis() {
+  const report = await getLoyverseReports({ period: "day" });
+  return { businessDate: new Date().toISOString().slice(0, 10), sessionId: 0, status: "open" as const, totalSold: report.totals.totalSold, cashSold: report.totals.cash, cardSold: report.totals.card, expectedCash: report.totals.cash, tickets: report.totals.tickets, hourly: report.series.map((entry) => ({ hour: 0, label: entry.label, total: entry.total, tickets: entry.tickets, cash: entry.cash, card: entry.card })), topProducts: report.topProducts.slice(0, 10) };
 }
