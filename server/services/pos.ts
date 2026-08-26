@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   cashMovements,
   cashSessions,
@@ -33,6 +33,8 @@ import { issueFiscalTestRecord } from "./fiscal";
 const toNumber = (value: string | number | null | undefined) => Number(value ?? 0);
 const money = (value: number) => value.toFixed(2);
 const quantity = (value: number) => value.toFixed(3);
+type ProductCostFields = Pick<typeof products.$inferSelect, "weightedAverageCost" | "lastPurchaseCost" | "weightedAverageCostBeforeSurcharge" | "lastPurchaseCostBeforeSurcharge">;
+const effectiveProductCost = (product: ProductCostFields) => [product.weightedAverageCost, product.lastPurchaseCost, product.weightedAverageCostBeforeSurcharge, product.lastPurchaseCostBeforeSurcharge].map(toNumber).find((value) => value > 0) ?? 0;
 
 export function getBusinessDate(now = new Date()) {
   const timezone = process.env.BUSINESS_TIMEZONE ?? "Europe/Madrid";
@@ -72,10 +74,13 @@ export async function listCatalog(categoryId?: number, order: "alphabetical" | "
       sku: products.sku,
       barcode: products.barcode,
       imageUrl: products.imageUrl,
+      imageZoom: products.imageZoom,
+      imagePositionX: products.imagePositionX,
+      imagePositionY: products.imagePositionY,
       unit: products.unit,
       salePrice: products.salePrice,
       vatRate: products.vatRate,
-      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), 0)`,
+      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), nullif(${products.lastPurchaseCostBeforeSurcharge}, 0), 0)`,
       minimumStock: products.minimumStock,
       isFeatured: products.isFeatured,
       isActive: products.isActive,
@@ -105,10 +110,13 @@ export async function getFeaturedProducts() {
       name: products.name,
       sku: products.sku,
       imageUrl: products.imageUrl,
+      imageZoom: products.imageZoom,
+      imagePositionX: products.imagePositionX,
+      imagePositionY: products.imagePositionY,
       unit: products.unit,
       salePrice: products.salePrice,
       vatRate: products.vatRate,
-      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), 0)`,
+      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), nullif(${products.lastPurchaseCostBeforeSurcharge}, 0), 0)`,
       stock: inventoryBalances.quantityOnHand,
       isFeatured: products.isFeatured,
       soldUnits,
@@ -144,6 +152,9 @@ export async function createProduct(input: {
   barcode?: string;
   imageUrl?: string;
   primarySupplierId?: number;
+  imageZoom?: number;
+  imagePositionX?: number;
+  imagePositionY?: number;
 }) {
   const database = requireDb();
   const initialStock = input.initialStock ?? 0;
@@ -170,6 +181,9 @@ export async function createProduct(input: {
       sku: input.sku?.trim() || null,
       barcode: input.barcode?.trim() || null,
       imageUrl: input.imageUrl?.trim() || null,
+      imageZoom: money(Math.min(3, Math.max(1, input.imageZoom ?? 1))),
+      imagePositionX: money(Math.min(100, Math.max(0, input.imagePositionX ?? 50))),
+      imagePositionY: money(Math.min(100, Math.max(0, input.imagePositionY ?? 50))),
       primarySupplierId: input.primarySupplierId ?? null,
     });
     const productId = Number(inserted[0].insertId);
@@ -291,7 +305,7 @@ export async function checkout(input: CheckoutInput) {
           const product = selected.product;
           const quantityValue = line.quantity;
           const currentStock = toNumber(selected.balance?.quantityOnHand);
-          const unitCost = toNumber(product.weightedAverageCost);
+          const unitCost = effectiveProductCost(product);
           stockRequirements.set(product.id, (stockRequirements.get(product.id) ?? 0) + quantityValue);
           computedLines.push({ product, currentStock, soldQuantity: quantityValue, unitPrice: 0, baseUnitPrice: 0, discountPercent: 0, pricingMode: "promotion_component", unitCost, vatRate: toNumber(product.vatRate), lineTotal: 0, lineVat: 0, lineSubtotal: 0, promotionId: promotion.id, promotionSlotId: slot.id });
         }
@@ -309,14 +323,15 @@ export async function checkout(input: CheckoutInput) {
       const currentStock = toNumber(selected.balance?.quantityOnHand);
       const lineInput = lineInputs.get(product.id);
       const pricingMode = lineInput?.pricingMode ?? "normal";
-      const baseUnitPrice = pricingMode === "cost" ? toNumber(product.weightedAverageCost) : toNumber(lineInput?.unitPrice ?? product.salePrice);
+      const unitCost = effectiveProductCost(product);
+      const baseUnitPrice = pricingMode === "cost" ? unitCost : toNumber(lineInput?.unitPrice ?? product.salePrice);
       const discountPercent = pricingMode === "free" ? 100 : Math.min(100, Math.max(0, toNumber(lineInput?.discountPercent)));
       const unitPrice = baseUnitPrice * (1 - discountPercent / 100);
       const vatRate = toNumber(product.vatRate);
       const lineTotal = unitPrice * soldQuantity;
       const lineVat = lineTotal * (vatRate / (100 + vatRate));
       stockRequirements.set(product.id, (stockRequirements.get(product.id) ?? 0) + soldQuantity);
-      computedLines.push({ product, currentStock, soldQuantity, unitPrice, baseUnitPrice, discountPercent, pricingMode, unitCost: toNumber(product.weightedAverageCost), vatRate, lineTotal, lineVat, lineSubtotal: lineTotal - lineVat });
+      computedLines.push({ product, currentStock, soldQuantity, unitPrice, baseUnitPrice, discountPercent, pricingMode, unitCost, vatRate, lineTotal, lineVat, lineSubtotal: lineTotal - lineVat });
     }
 
     for (const [productId, required] of stockRequirements) {
@@ -344,7 +359,7 @@ export async function checkout(input: CheckoutInput) {
       const quantityAfter = stockBefore - required;
       if (selected.balance) await tx.update(inventoryBalances).set({ quantityOnHand: quantity(quantityAfter) }).where(eq(inventoryBalances.productId, productId));
       else await tx.insert(inventoryBalances).values({ productId, quantityOnHand: quantity(quantityAfter) });
-      await tx.insert(stockMovements).values({ productId, movementType: "sale", quantityDelta: quantity(-required), quantityBefore: quantity(stockBefore), quantityAfter: quantity(quantityAfter), unitCost: money(toNumber(selected.product.weightedAverageCost)), sourceType: "sale", sourceId: saleId, note: `Venta ${saleNumber}` });
+      await tx.insert(stockMovements).values({ productId, movementType: "sale", quantityDelta: quantity(-required), quantityBefore: quantity(stockBefore), quantityAfter: quantity(quantityAfter), unitCost: money(effectiveProductCost(selected.product)), sourceType: "sale", sourceId: saleId, note: `Venta ${saleNumber}` });
     }
     await tx.insert(payments).values({ saleId, method: input.paymentMethod, amount: money(totalAmount), receivedAmount: money(receivedAmount), changeAmount: money(changeAmount), terminalReference: input.paymentMethod === "card" ? input.terminalReference?.trim() || null : null });
     if (input.paymentMethod === "cash") await tx.insert(cashMovements).values({ cashSessionId: cashSession.id, movementType: "cash_sale", amount: money(totalAmount), sourceType: "sale", sourceId: saleId, note: `Venta ${saleNumber}` });
@@ -432,6 +447,17 @@ export async function listVatTypes() {
   return database.select().from(vatTypes).where(eq(vatTypes.isActive, true)).orderBy(asc(vatTypes.sortOrder), asc(vatTypes.rate));
 }
 
+export async function repairImportedVatRates() {
+  const database = requireDb();
+  const settings = await database.select().from(posSettings).limit(1);
+  const configuredRate = toNumber(settings[0]?.defaultVatRate ?? 10);
+  const targetRate = [0, 4, 10, 21].includes(configuredRate) ? configuredRate : 10;
+  const targetVat = await database.select({ id: vatTypes.id }).from(vatTypes).where(and(eq(vatTypes.isActive, true), eq(vatTypes.rate, money(targetRate)))).limit(1);
+  const result = await database.update(products).set({ vatTypeId: targetVat[0]?.id ?? null, vatRate: money(targetRate), equivalenceSurchargeRate: money(targetRate === 10 ? 1.4 : targetRate === 21 ? 5.2 : 0) }).where(and(isNotNull(products.loyverseVariantId), eq(products.vatRate, "7.00")));
+  const header = result[0] as { affectedRows?: number } | undefined;
+  return { success: true, corrected: Number(header?.affectedRows ?? 0), vatRate: targetRate, vatTypeId: targetVat[0]?.id ?? null, historicalRecordsChanged: false };
+}
+
 export async function createVatType(input: { name: string; rate: number; sortOrder?: number }) {
   const database = requireDb();
   const inserted = await database.insert(vatTypes).values({ name: input.name.trim(), rate: money(input.rate), sortOrder: input.sortOrder ?? 0 });
@@ -464,6 +490,12 @@ export async function listAdminProducts() {
       vatRate: products.vatRate,
       lastPurchaseCost: products.lastPurchaseCost,
       weightedAverageCost: products.weightedAverageCost,
+      lastPurchaseCostBeforeSurcharge: products.lastPurchaseCostBeforeSurcharge,
+      weightedAverageCostBeforeSurcharge: products.weightedAverageCostBeforeSurcharge,
+      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), nullif(${products.lastPurchaseCostBeforeSurcharge}, 0), 0)`,
+      imageZoom: products.imageZoom,
+      imagePositionX: products.imagePositionX,
+      imagePositionY: products.imagePositionY,
       minimumStock: products.minimumStock,
       isFeatured: products.isFeatured,
       showInTpv: products.showInTpv,
@@ -746,6 +778,9 @@ export async function updateProduct(input: {
   isFeatured?: boolean;
   isActive?: boolean;
   imageUrl?: string | null;
+  imageZoom?: number;
+  imagePositionX?: number;
+  imagePositionY?: number;
   sku?: string | null;
   barcode?: string | null;
   vatTypeId?: number | null;
@@ -767,6 +802,9 @@ export async function updateProduct(input: {
   if (input.showInTpv !== undefined) updateSet.showInTpv = input.showInTpv;
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
   if (input.imageUrl !== undefined) updateSet.imageUrl = input.imageUrl?.trim() || null;
+  if (input.imageZoom !== undefined) updateSet.imageZoom = money(Math.min(3, Math.max(1, input.imageZoom)));
+  if (input.imagePositionX !== undefined) updateSet.imagePositionX = money(Math.min(100, Math.max(0, input.imagePositionX)));
+  if (input.imagePositionY !== undefined) updateSet.imagePositionY = money(Math.min(100, Math.max(0, input.imagePositionY)));
   if (input.sku !== undefined) updateSet.sku = input.sku?.trim() || null;
   if (input.barcode !== undefined) updateSet.barcode = input.barcode?.trim() || null;
   if (input.vatTypeId !== undefined) {
@@ -1285,15 +1323,20 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
           const localWeightedCost = local ? toNumber(local.weightedAverageCost) : 0;
           const localLastCost = local ? toNumber(local.lastPurchaseCost) : 0;
           const effectiveCost = localWeightedCost > 0 ? localWeightedCost : localLastCost > 0 ? localLastCost : importedCost;
+          const localVatRate = local ? toNumber(local.vatRate) : 0;
+          const localVatIsValid = [0, 4, 10, 21].includes(localVatRate);
+          const importedVatRate = local && localVatIsValid ? localVatRate : defaultVatRate;
+          const importedVatTypeId = local && localVatIsValid ? local.vatTypeId : defaultVat[0]?.id ?? null;
+          const importedSurchargeRate = importedVatRate === 10 ? 1.4 : importedVatRate === 21 ? 5.2 : 0;
           if (!local) {
-          const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost), minimumStock: quantity(toNumber(priceRow?.lowStock)) });
+          const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), equivalenceSurchargeRate: money(importedSurchargeRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost), minimumStock: quantity(toNumber(priceRow?.lowStock)) });
             const productId = Number(inserted[0].insertId);
-            local = { id: productId, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
+            local = { id: productId, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), equivalenceSurchargeRate: money(importedSurchargeRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             localProducts.push(local);
             productsCreated += 1;
           } else {
-            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)), ...(effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0 ? { lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost) } : {}) }).where(eq(products.id, local.id));
-            local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
+            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)), ...(effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0 ? { lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost) } : {}) }).where(eq(products.id, local.id));
+            local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             productsUpdated += 1;
           }
           productByVariant.set(variant.loyverseId, local);

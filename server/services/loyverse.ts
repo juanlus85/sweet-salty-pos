@@ -253,6 +253,9 @@ async function upsertVariant(variant: JsonObject, itemLoyverseId?: string) {
   const loyverseId = asString(variant.variant_id) || asString(variant.id);
   const itemId = itemLoyverseId || asString(variant.item_id);
   if (!loyverseId || !itemId) return;
+  const storeCostCandidates = asArray(variant.stores).flatMap((store) => [store.cost, store.purchase_cost, store.purchaseCost, store.cost_price, store.costPrice, store.unit_cost, store.unitCost]);
+  const catalogCost = firstPositiveMoney(variant.cost, variant.default_cost, variant.average_cost, variant.cost_price, variant.costPrice, variant.unit_cost, variant.unitCost, ...storeCostCandidates);
+  const purchaseCost = firstPositiveMoney(variant.purchase_cost, variant.purchaseCost, variant.purchase_price, variant.purchasePrice, variant.purchase_cost_per_unit, variant.purchaseCostPerUnit, ...storeCostCandidates);
   const values = {
     loyverseId,
     itemLoyverseId: itemId,
@@ -261,8 +264,8 @@ async function upsertVariant(variant: JsonObject, itemLoyverseId?: string) {
     option1Value: asString(variant.option1_value),
     option2Value: asString(variant.option2_value),
     option3Value: asString(variant.option3_value),
-    cost: firstPositiveMoney(variant.cost, variant.default_cost, variant.average_cost) > 0 ? asDecimal(firstPositiveMoney(variant.cost, variant.default_cost, variant.average_cost)) : null,
-    purchaseCost: firstPositiveMoney(variant.purchase_cost, variant.purchaseCost, variant.purchase_price) > 0 ? asDecimal(firstPositiveMoney(variant.purchase_cost, variant.purchaseCost, variant.purchase_price)) : null,
+    cost: catalogCost > 0 ? asDecimal(catalogCost) : null,
+    purchaseCost: purchaseCost > 0 ? asDecimal(purchaseCost) : null,
     defaultPrice: variant.default_price === null || variant.default_price === undefined ? null : asDecimal(variant.default_price),
     deletedAt: asDate(variant.deleted_at),
     remoteCreatedAt: asDate(variant.created_at),

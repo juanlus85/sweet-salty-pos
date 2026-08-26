@@ -38,6 +38,9 @@ const createProductSchema = z.object({
   sku: z.string().trim().max(100).optional(),
   barcode: z.string().trim().max(100).optional(),
   imageUrl: mediaPathSchema.optional(),
+  imageZoom: z.number().min(1).max(3).optional(),
+  imagePositionX: z.number().min(0).max(100).optional(),
+  imagePositionY: z.number().min(0).max(100).optional(),
   primarySupplierId: z.number().int().positive().optional(),
 });
 
@@ -514,6 +517,15 @@ apiRouter.post("/admin/category-images", async (req, res, next) => {
   }
 });
 
+apiRouter.post("/admin/products/repair-vat", async (_req, res, next) => {
+  try {
+    const { repairImportedVatRates } = await import("./services/pos");
+    res.json(await repairImportedVatRates());
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.patch("/admin/products/:id", async (req, res, next) => {
   try {
     const input = parseBody(z.object({
@@ -531,6 +543,9 @@ apiRouter.patch("/admin/products/:id", async (req, res, next) => {
       vatTypeId: z.number().int().positive().nullable().optional(),
       lastPurchaseCost: z.number().nonnegative().optional(),
       weightedAverageCost: z.number().nonnegative().optional(),
+      imageZoom: z.number().min(1).max(3).optional(),
+      imagePositionX: z.number().min(0).max(100).optional(),
+      imagePositionY: z.number().min(0).max(100).optional(),
     }), req.body);
     const { updateProduct } = await import("./services/pos");
     res.json(await updateProduct({ id: Number(req.params.id), ...input }));
