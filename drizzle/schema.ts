@@ -87,6 +87,22 @@ export const loyverseCategories = mysqlTable("pos_loyverse_categories", {
   uniqueIndex("pos_loyverse_categories_loyverse_id_unique").on(table.loyverseId),
 ]);
 
+export const loyverseTaxes = mysqlTable("pos_loyverse_taxes", {
+  id: int("id").autoincrement().primaryKey(),
+  loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 64 }),
+  rate: decimal("rate", { precision: 12, scale: 2 }),
+  deletedAt: datetime("deleted_at", { mode: "date" }),
+  remoteCreatedAt: datetime("remote_created_at", { mode: "date" }),
+  remoteUpdatedAt: datetime("remote_updated_at", { mode: "date" }),
+  rawData: json("raw_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pos_loyverse_taxes_loyverse_id_unique").on(table.loyverseId),
+]);
+
 export const loyverseItems = mysqlTable("pos_loyverse_items", {
   id: int("id").autoincrement().primaryKey(),
   loyverseId: varchar("loyverse_id", { length: 64 }).notNull(),

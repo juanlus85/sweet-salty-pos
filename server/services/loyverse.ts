@@ -1,10 +1,12 @@
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { requireDb } from "../db";
 import {
   loyverseCategories,
   loyverseInventoryLevels,
   posSettings,
   loyverseItems,
+  loyverseTaxes,
   loyverseReceiptLines,
   loyverseReceiptPayments,
   loyverseReceipts,
@@ -226,6 +228,42 @@ async function upsertCategory(category: JsonObject) {
   await database.insert(loyverseCategories).values(values).onDuplicateKeyUpdate({ set: values });
 }
 
+async function ensureLoyverseTaxesSchema() {
+  const database = requireDb();
+  await database.execute(sql`CREATE TABLE IF NOT EXISTS pos_loyverse_taxes (
+    id INT AUTO_INCREMENT NOT NULL,
+    loyverse_id VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(64) NULL,
+    rate DECIMAL(12,2) NULL,
+    deleted_at DATETIME NULL,
+    remote_created_at DATETIME NULL,
+    remote_updated_at DATETIME NULL,
+    raw_data JSON NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY pos_loyverse_taxes_loyverse_id_unique (loyverse_id)
+  )`);
+}
+
+async function upsertTax(tax: JsonObject) {
+  const database = requireDb();
+  const loyverseId = asString(tax.id);
+  if (!loyverseId) return;
+  const values = {
+    loyverseId,
+    name: asString(tax.name) || "Impuesto Loyverse",
+    type: asString(tax.type),
+    rate: tax.rate === null || tax.rate === undefined ? null : asDecimal(tax.rate),
+    deletedAt: asDate(tax.deleted_at),
+    remoteCreatedAt: asDate(tax.created_at),
+    remoteUpdatedAt: asDate(tax.updated_at),
+    rawData: tax,
+  };
+  await database.insert(loyverseTaxes).values(values).onDuplicateKeyUpdate({ set: values });
+}
+
 async function upsertItem(item: JsonObject) {
   const database = requireDb();
   const loyverseId = asString(item.id);
@@ -381,12 +419,20 @@ async function upsertShift(shift: JsonObject) {
 
 export async function syncLoyverseCatalog() {
   const config = await ensureConfigured();
+  await ensureLoyverseTaxesSchema();
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
   try {
     const merchant = await loyverseRequest("/merchant");
     const stores = await fetchAll("/stores", "stores", { show_deleted: "true" });
     const categories = await fetchAll("/categories", "categories", { show_deleted: "true" });
+    let taxes: JsonObject[] = [];
+    try {
+      taxes = await fetchAll("/taxes", "taxes", { show_deleted: "true" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!/HTTP (403|404|405)/.test(message)) throw error;
+    }
     const items = await fetchAll("/items", "items", { show_deleted: "true" });
     let variants: JsonObject[] = [];
     try {
@@ -398,6 +444,7 @@ export async function syncLoyverseCatalog() {
     }
     await runBatches(stores, upsertStore);
     await runBatches(categories, upsertCategory);
+    await runBatches(taxes, upsertTax, 8);
     await runBatches(items, upsertItem, 4);
     await runBatches(variants, (variant) => upsertVariant(variant), 8);
     const storeIds = stores.map((store) => asString(store.id)).filter((id): id is string => Boolean(id));
@@ -407,7 +454,7 @@ export async function syncLoyverseCatalog() {
     const activeStore = stores.find((store) => asString(store.id) === activeStoreId);
     const finishedAt = new Date();
     await saveSyncState({ merchantId: asString(merchant.id), merchantName: asString(merchant.name), activeStoreId, activeStoreName: asString(activeStore?.name), catalogSyncedAt: finishedAt, lastSyncFinishedAt: finishedAt, lastSyncStatus: "success", lastSyncError: null });
-    return { success: true, merchantName: asString(merchant.name), stores: stores.length, categories: categories.length, items: items.length, variants: variants.length, inventoryLevels: inventory.length, syncedAt: finishedAt.toISOString() };
+    return { success: true, merchantName: asString(merchant.name), stores: stores.length, categories: categories.length, taxes: taxes.length, items: items.length, variants: variants.length, inventoryLevels: inventory.length, syncedAt: finishedAt.toISOString() };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido al sincronizar Loyverse.";
     await saveSyncState({ lastSyncFinishedAt: new Date(), lastSyncStatus: "error", lastSyncError: message });

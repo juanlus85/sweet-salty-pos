@@ -18,6 +18,7 @@ import {
   vatTypes,
   loyverseCategories,
   loyverseItems,
+  loyverseTaxes,
   loyverseVariants,
   loyverseVariantPrices,
   loyverseInventoryLevels,
@@ -1272,12 +1273,42 @@ function boundedCatalogText(value: string | null | undefined, maxLength: number)
   return normalized ? normalized.slice(0, maxLength) : null;
 }
 
-export async function importLoyverseCatalogToOperational(requestedStoreId?: string) {
+function loyverseItemVatRate(rawData: unknown, taxRateById: Map<string, number>) {
+  const rawItem = rawData && typeof rawData === "object" && !Array.isArray(rawData) ? rawData as Record<string, unknown> : {};
+  const taxIds = Array.isArray(rawItem.tax_ids) ? rawItem.tax_ids.filter((value): value is string => typeof value === "string" && value.trim().length > 0) : [];
+  const rates = taxIds.map((taxId) => taxRateById.get(taxId)).filter((rate): rate is number => rate !== undefined && Number.isFinite(rate));
+  if (!rates.length) return null;
+  const combinedRate = rates.reduce((sum, rate) => sum + rate, 0);
+  return [0, 4, 10, 21].includes(combinedRate) ? combinedRate : null;
+}
+
+async function ensureLoyverseTaxesSchema() {
   const database = requireDb();
-  const [settingsRows, syncStates, remoteItems, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
+  await database.execute(sql`CREATE TABLE IF NOT EXISTS pos_loyverse_taxes (
+    id INT AUTO_INCREMENT NOT NULL,
+    loyverse_id VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(64) NULL,
+    rate DECIMAL(12,2) NULL,
+    deleted_at DATETIME NULL,
+    remote_created_at DATETIME NULL,
+    remote_updated_at DATETIME NULL,
+    raw_data JSON NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY pos_loyverse_taxes_loyverse_id_unique (loyverse_id)
+  )`);
+}
+
+export async function importLoyverseCatalogToOperational(requestedStoreId?: string) {
+  await ensureLoyverseTaxesSchema();
+  const database = requireDb();
+  const [settingsRows, syncStates, remoteItems, remoteTaxes, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
     database.select().from(posSettings).limit(1),
     database.select().from(loyverseSyncState).limit(1),
     database.select().from(loyverseItems),
+    database.select().from(loyverseTaxes),
     database.select().from(loyverseVariants),
     database.select().from(loyverseVariantPrices),
     database.select().from(loyverseInventoryLevels),
@@ -1304,6 +1335,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
   }
   const variantsByItem = new Map<string, typeof remoteVariants>();
   for (const variant of remoteVariants) variantsByItem.set(variant.itemLoyverseId, [...(variantsByItem.get(variant.itemLoyverseId) ?? []), variant]);
+  const taxRateById = new Map(remoteTaxes.map((tax) => [tax.loyverseId, toNumber(tax.rate)]));
 
   const imported = await database.transaction(async (tx) => {
     let categoriesCreated = 0;
@@ -1339,13 +1371,17 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
     const balanceByProduct = new Map(localBalances.map((balance) => [balance.productId, balance]));
     const configuredDefaultVatRate = toNumber(settingsRows[0]?.defaultVatRate ?? 10);
     const defaultVatRate = [0, 4, 10, 21].includes(configuredDefaultVatRate) ? configuredDefaultVatRate : 10;
-    const defaultVat = await tx.select({ id: vatTypes.id, rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.isActive, true), eq(vatTypes.rate, money(defaultVatRate)))).limit(1);
+    const activeVatTypes = await tx.select({ id: vatTypes.id, rate: vatTypes.rate }).from(vatTypes).where(eq(vatTypes.isActive, true));
+    const defaultVat = activeVatTypes.find((vatType) => toNumber(vatType.rate) === defaultVatRate) ?? activeVatTypes.find((vatType) => toNumber(vatType.rate) === 10);
+    const vatTypeIdByRate = new Map(activeVatTypes.map((vatType) => [toNumber(vatType.rate), vatType.id]));
     let productsCreated = 0;
     let productsUpdated = 0;
     let stockUpdated = 0;
     let costVariantsAvailable = 0;
     let costsUpdated = 0;
     let costsPreserved = 0;
+    let productsWithRemoteVat = 0;
+    let productsUsingVatFallback = 0;
     let skipped = 0;
     const skippedDetails: string[] = [];
 
@@ -1374,11 +1410,15 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
           const localWeightedCost = local ? toNumber(local.weightedAverageCost) : 0;
           const localLastCost = local ? toNumber(local.lastPurchaseCost) : 0;
           const effectiveCost = localWeightedCost > 0 ? localWeightedCost : localLastCost > 0 ? localLastCost : importedCost;
-          const localVatRate = local ? toNumber(local.vatRate) : 0;
-          const localVatIsValid = [0, 4, 10, 21].includes(localVatRate);
-          const importedVatRate = local && localVatIsValid ? localVatRate : defaultVatRate;
-          const importedVatTypeId = local && localVatIsValid ? local.vatTypeId : defaultVat[0]?.id ?? null;
-          const importedSurchargeRate = importedVatRate === 10 ? 1.4 : importedVatRate === 21 ? 5.2 : 0;
+        const localVatRate = local ? toNumber(local.vatRate) : 0;
+        const remoteVatRate = loyverseItemVatRate(item.rawData, taxRateById);
+        if (remoteVatRate !== null) productsWithRemoteVat += 1;
+        else productsUsingVatFallback += 1;
+        const localVatIsValid = [0, 4, 10, 21].includes(localVatRate);
+        const candidateVatRate = remoteVatRate ?? (local && localVatIsValid ? localVatRate : defaultVatRate);
+        const importedVatRate = vatTypeIdByRate.has(candidateVatRate) ? candidateVatRate : defaultVatRate;
+        const importedVatTypeId = vatTypeIdByRate.get(importedVatRate) ?? defaultVat?.id ?? null;
+        const importedSurchargeRate = importedVatRate === 10 ? 1.4 : importedVatRate === 21 ? 5.2 : 0;
           if (!local) {
           const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), equivalenceSurchargeRate: money(importedSurchargeRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost), minimumStock: quantity(toNumber(priceRow?.lowStock)) });
             const productId = Number(inserted[0].insertId);
@@ -1420,7 +1460,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         }
       }
     }
-    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, skipped, skippedDetails, storeId: availableStoreId };
+    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, taxesAvailable: remoteTaxes.length, productsWithRemoteVat, productsUsingVatFallback, skipped, skippedDetails, storeId: availableStoreId };
   });
   return { success: true, ...imported };
 }

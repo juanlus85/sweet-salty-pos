@@ -554,7 +554,7 @@ function AdminScreen({ onBack, onOpenMenu }: { onBack: () => void; onOpenMenu: (
     onError: (error) => toast.error("No se ha podido conectar con Loyverse", { description: error.message }),
   });
   const syncLoyverseCatalogMutation = useMutation({
-    mutationFn: () => api<{ success: boolean; items: number; categories: number; variants?: number; inventoryLevels: number }>("/admin/loyverse/sync/catalog", { method: "POST" }),
+    mutationFn: () => api<{ success: boolean; items: number; categories: number; taxes?: number; variants?: number; inventoryLevels: number }>("/admin/loyverse/sync/catalog", { method: "POST" }),
     onSuccess: (result) => { toast.success("Catálogo de Loyverse sincronizado", { description: `${result.items} artículos · ${result.variants ?? 0} variantes · ${result.categories} familias · ${result.inventoryLevels} niveles de stock` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
     onError: (error) => toast.error("No se ha podido sincronizar el catálogo de Loyverse", { description: error.message }),
   });
@@ -565,7 +565,7 @@ function AdminScreen({ onBack, onOpenMenu }: { onBack: () => void; onOpenMenu: (
   });
   const syncLoyverseAllMutation = useMutation({
     mutationFn: async () => {
-      const catalog = await api<{ success: boolean; items: number; categories: number; variants?: number; inventoryLevels: number }>("/admin/loyverse/sync/catalog", { method: "POST" });
+      const catalog = await api<{ success: boolean; items: number; categories: number; taxes?: number; variants?: number; inventoryLevels: number }>("/admin/loyverse/sync/catalog", { method: "POST" });
       const sales = await syncSalesLast31Days(loyverseStoreId);
       return { ...catalog, ...sales };
     },
@@ -573,8 +573,8 @@ function AdminScreen({ onBack, onOpenMenu }: { onBack: () => void; onOpenMenu: (
     onError: (error) => toast.error("No se ha podido sincronizar Loyverse", { description: error.message }),
   });
   const importLoyverseCatalogMutation = useMutation({
-    mutationFn: () => api<{ success: boolean; categoriesCreated: number; categoriesUpdated: number; productsCreated: number; productsUpdated: number; stockUpdated: number; costVariantsAvailable: number; costsUpdated: number; costsPreserved: number; skipped: number; skippedDetails: string[] }>("/admin/loyverse/import/catalog", { method: "POST", body: JSON.stringify({ storeId: loyverseStoreId || undefined }) }),
-    onSuccess: (result) => { toast.success("Catálogo importado al TPV", { description: `${result.productsCreated} nuevos · ${result.productsUpdated} actualizados · ${result.stockUpdated} stocks sincronizados · ${result.costsUpdated} costes guardados · ${result.costsPreserved} costes locales conservados${result.costVariantsAvailable === 0 ? " · Loyverse no entregó costes" : ""}${result.skipped ? ` · ${result.skipped} omitidos por conflicto` : ""}` }); queryClient.invalidateQueries({ queryKey: ["admin-products"] }); queryClient.invalidateQueries({ queryKey: ["admin-categories"] }); queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }); queryClient.invalidateQueries({ queryKey: ["catalog"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
+    mutationFn: () => api<{ success: boolean; categoriesCreated: number; categoriesUpdated: number; productsCreated: number; productsUpdated: number; stockUpdated: number; costVariantsAvailable: number; costsUpdated: number; costsPreserved: number; taxesAvailable: number; productsWithRemoteVat: number; productsUsingVatFallback: number; skipped: number; skippedDetails: string[] }>("/admin/loyverse/import/catalog", { method: "POST", body: JSON.stringify({ storeId: loyverseStoreId || undefined }) }),
+    onSuccess: (result) => { toast.success("Catálogo importado al TPV", { description: `${result.productsCreated} nuevos · ${result.productsUpdated} actualizados · ${result.stockUpdated} stocks sincronizados · ${result.costsUpdated} costes guardados · ${result.costsPreserved} costes locales conservados · ${result.productsWithRemoteVat} IVA de Loyverse · ${result.productsUsingVatFallback} IVA de fallback${result.costVariantsAvailable === 0 ? " · Loyverse no entregó costes" : ""}${result.taxesAvailable === 0 ? " · Sin impuestos descargados" : ""}${result.skipped ? ` · ${result.skipped} omitidos por conflicto` : ""}` }); queryClient.invalidateQueries({ queryKey: ["admin-products"] }); queryClient.invalidateQueries({ queryKey: ["admin-categories"] }); queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }); queryClient.invalidateQueries({ queryKey: ["catalog"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
     onError: (error) => toast.error("No se ha podido importar el catálogo al TPV", { description: error.message }),
   });
   const createVatTypeMutation = useMutation({
