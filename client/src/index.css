@@ -411,3 +411,89 @@ button:disabled { cursor: not-allowed; }
   .line-quantity-editor { grid-template-columns: 58px minmax(66px,1fr) 58px; }
   .line-quantity-editor button, .line-quantity-editor input { min-height: 56px; }
 }
+
+/* Formularios de edición contextuales: permanecen en la zona visible del dispositivo */
+.context-edit-form {
+  position: fixed;
+  z-index: 80;
+  top: 76px;
+  left: clamp(12px, 4vw, 64px);
+  right: clamp(12px, 4vw, 64px);
+  max-height: calc(100dvh - 92px);
+  overflow-y: auto;
+  margin: 0 !important;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.24);
+  border: 1px solid rgba(76, 138, 90, 0.24);
+}
+
+.context-edit-form::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.12);
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .context-edit-form {
+    top: 58px;
+    left: 8px;
+    right: 8px;
+    max-height: calc(100dvh - 68px);
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1100px) {
+  .context-edit-form {
+    left: 20px;
+    right: 20px;
+  }
+}
+
+.context-edit-form .inline-form__actions,
+.context-edit-form .category-form-card__actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface, #fff);
+  padding-bottom: 2px;
+}
+
+.category-admin-row--editing,
+.admin-product-row--editing {
+  outline: 3px solid rgba(76, 138, 90, 0.28);
+  outline-offset: -3px;
+  background: rgba(76, 138, 90, 0.06);
+}
+
+.ticket-line__components {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  margin-top: 4px;
+  color: #607765;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.ticket-line__components small {
+  color: #8a998d;
+  font-weight: 700;
+}
+
+.ticket-line__components span {
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: #42624b;
+  background: #eef6ed;
+}
+
+.checkout-ticket__components {
+  display: block;
+  margin-top: 2px;
+  color: #607765;
+  line-height: 1.35;
+}
