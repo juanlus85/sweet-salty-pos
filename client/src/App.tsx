@@ -164,7 +164,7 @@ function CheckoutDialog({ cart, total, onClose, onComplete }: { cart: CartLine[]
   );
 }
 
-function PosScreen() {
+function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [order, setOrder] = useState<"popular" | "alphabetical">("popular");
@@ -245,7 +245,7 @@ function PosScreen() {
     <main className="pos-shell">
       <section className="catalog-panel">
         <header className="pos-header">
-          <div className="pos-header__left">{selectedCategory !== null ? <button className="pos-header__icon" onClick={() => setSelectedCategory(null)} aria-label="Volver a familias"><ArrowLeft size={26} /></button> : <button className="pos-header__icon" aria-label="Menú principal"><Menu size={26} /></button>}<div className="pos-header__title"><strong>{selectedCategory !== null ? categoriesQuery.data?.find((category) => category.id === selectedCategory)?.name ?? "Familia" : "Venta"}</strong><small>Sweet &amp; Salty</small></div><button className="pos-home-button" onClick={() => { setSelectedCategory(null); setSearch(""); setOrder("popular"); }}><LayoutGrid size={16} /> INICIO</button></div>
+          <div className="pos-header__left">{selectedCategory !== null ? <button className="pos-header__icon" onClick={() => setSelectedCategory(null)} aria-label="Volver a familias"><ArrowLeft size={26} /></button> : <button className="pos-header__icon pos-header__menu-button" onClick={onOpenMenu} aria-label="Abrir menú principal"><Menu size={30} /></button>}<div className="pos-header__title"><strong>{selectedCategory !== null ? categoriesQuery.data?.find((category) => category.id === selectedCategory)?.name ?? "Familia" : "Venta"}</strong><small>Sweet &amp; Salty</small></div><button className="pos-home-button" onClick={() => { setSelectedCategory(null); setSearch(""); setOrder("popular"); }}><LayoutGrid size={16} /> INICIO</button></div>
           <div className="header-actions"><button className="pos-header__icon" aria-label="Buscar"><Search size={25} /></button><span className="register-status"><i /> Caja abierta</span></div>
         </header>
         <div className="catalog-toolbar">
@@ -359,7 +359,7 @@ function fileToDataUrl(file: File) {
   });
 }
 
-function AdminScreen({ onBack }: { onBack: () => void }) {
+function AdminScreen({ onBack, onOpenMenu }: { onBack: () => void; onOpenMenu: () => void }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<AdminTab>("overview");
   const [reportPeriod, setReportPeriod] = useState("quarter");
@@ -665,7 +665,7 @@ function AdminScreen({ onBack }: { onBack: () => void }) {
         <div className="admin-sidebar__footer"><small>Versión v0.1.0 · 2026</small><button onClick={onBack}><ShoppingBag size={16} /> Volver al TPV</button></div>
       </aside>
       <section className="admin-content">
-        <header className="admin-topbar"><div><span className="eyebrow">PANEL DE CONTROL</span><h1>{tabs.find((item) => item.id === tab)?.label}</h1><small className="build-label">{buildLabel}</small></div><div className="admin-topbar__actions"><span className="register-status"><i /> Caja {cashQuery.data?.status === "closed" ? "cerrada" : "abierta"}</span><button className="avatar">SS</button></div></header>
+        <header className="admin-topbar"><button className="admin-mobile-menu" onClick={onOpenMenu} aria-label="Abrir menú principal"><Menu size={25} /></button><div><span className="eyebrow">PANEL DE CONTROL</span><h1>{tabs.find((item) => item.id === tab)?.label}</h1><small className="build-label">{buildLabel}</small></div><div className="admin-topbar__actions"><span className="register-status"><i /> Caja {cashQuery.data?.status === "closed" ? "cerrada" : "abierta"}</span><button className="avatar">SS</button></div></header>
         {tab === "reports" && <ReportsPanel data={reportsQuery.data} period={reportPeriod} setPeriod={setReportPeriod} from={reportFrom} setFrom={setReportFrom} to={reportTo} setTo={setReportTo} source={reportSource} setSource={setReportSource} isLoading={reportsQuery.isLoading} />}
         {tab === "fiscal" && <FiscalReadinessPanel data={fiscalQuery.data} loading={fiscalQuery.isLoading} verifying={fiscalVerifyMutation.isPending} onVerify={() => fiscalVerifyMutation.mutate()} onCancel={(fiscalInvoiceId) => { const reason = window.prompt("Motivo de anulación"); if (reason?.trim()) fiscalCancelMutation.mutate({ fiscalInvoiceId, reason }); }} onRectify={(fiscalInvoiceId, totalAmount) => { const reason = window.prompt("Motivo de rectificación"); if (reason?.trim()) fiscalRectifyMutation.mutate({ fiscalInvoiceId, reason, correctedTotal: totalAmount }); }} correcting={fiscalCancelMutation.isPending || fiscalRectifyMutation.isPending} />}
         {tab === "analysis" && <div className="admin-page analysis-page"><AdminPageHeader title="Análisis diario" description={`Jornada comercial ${analysisQuery.data?.businessDate ?? cashQuery.data?.businessDate ?? "—"} · de 07:00 a 07:00 · ${cashQuery.data?.businessTimezone ?? "Europe/Madrid"}`} /><div className="metric-grid"><div className="metric-card metric-card--accent"><span>Total vendido hoy</span><strong>{euro.format(Number(analysisQuery.data?.totalSold ?? cashQuery.data?.totalSold ?? 0))}</strong><small>{analysisQuery.data?.tickets ?? 0} tickets completados</small></div><div className="metric-card"><span>Efectivo</span><strong>{euro.format(Number(analysisQuery.data?.cashSold ?? 0))}</strong><small>Esperado en caja: {euro.format(Number(analysisQuery.data?.expectedCash ?? 0))}</small></div><div className="metric-card"><span>Tarjeta</span><strong>{euro.format(Number(analysisQuery.data?.cardSold ?? cashQuery.data?.cardTotal ?? 0))}</strong><small>Registrado en datáfono</small></div><div className="metric-card metric-card--warning"><span>Estado de caja</span><strong>{analysisQuery.data?.status === "closed" ? "Cerrada" : "Abierta"}</strong><small>Jornada activa</small></div></div><div className="admin-columns"><section className="admin-card hourly-chart-card"><div className="admin-card__header"><div><span className="eyebrow">RITMO DE VENTAS</span><h2>Ventas por hora</h2></div><span className="chart-caption">Hora española</span></div><div className="hourly-chart">{(analysisQuery.data?.hourly ?? []).map((bucket) => { const max = Math.max(...(analysisQuery.data?.hourly ?? []).map((item) => Number(item.total)), 1); const height = Math.max(4, (Number(bucket.total) / max) * 100); return <div className="hourly-chart__column" key={bucket.hour} title={`${bucket.label}: ${euro.format(Number(bucket.total))}`}><span className="hourly-chart__value">{Number(bucket.total) > 0 ? euro.format(Number(bucket.total)) : ""}</span><div className="hourly-chart__bar" style={{ height: `${height}%` }} /><small>{bucket.label}</small></div>; })}</div></section><section className="admin-card"><div className="admin-card__header"><div><span className="eyebrow">ARTÍCULOS</span><h2>Más vendidos hoy</h2></div></div>{(analysisQuery.data?.topProducts ?? []).length === 0 ? <div className="admin-empty">Todavía no hay ventas en esta jornada.</div> : <div className="mini-ranking">{analysisQuery.data?.topProducts.map((product, index) => <div className="mini-ranking__row" key={`${product.productId}-${product.productName}`}><b>{String(index + 1).padStart(2, "0")}</b><span>{product.productName}</span><small>{product.units} ud.</small><strong>{euro.format(Number(product.revenue))}</strong></div>)}</div>}</section></div></div>}
@@ -734,6 +734,7 @@ type DeferredInstallPrompt = Event & { prompt: () => Promise<void>; userChoice: 
 
 function App() {
   const [view, setView] = useState<"pos" | "admin">("pos");
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<DeferredInstallPrompt | null>(null);
   const [installed, setInstalled] = useState(window.matchMedia?.("(display-mode: standalone)").matches ?? false);
   useEffect(() => {
@@ -746,7 +747,8 @@ function App() {
   return (
     <>
       <Toaster position="top-center" richColors />
-      {view === "pos" ? <PosScreen /> : <AdminScreen onBack={() => setView("pos")} />}
+      {view === "pos" ? <PosScreen onOpenMenu={() => setNavigationOpen(true)} /> : <AdminScreen onBack={() => setView("pos")} onOpenMenu={() => setNavigationOpen(true)} />}
+      {navigationOpen && <div className="navigation-overlay" role="presentation" onClick={() => setNavigationOpen(false)}><aside className="navigation-drawer" role="dialog" aria-label="Menú principal" onClick={(event) => event.stopPropagation()}><div className="navigation-drawer__header"><div><span className="eyebrow">SWEET &amp; SALTY</span><h2>Menú principal</h2></div><button className="navigation-close" onClick={() => setNavigationOpen(false)} aria-label="Cerrar menú"><X size={28} /></button></div><button className={view === "pos" ? "navigation-option navigation-option--active" : "navigation-option"} onClick={() => { setView("pos"); setNavigationOpen(false); }}><ShoppingBag size={26} /><span><strong>Ventas</strong><small>Volver al terminal TPV</small></span></button><button className={view === "admin" ? "navigation-option navigation-option--active" : "navigation-option"} onClick={() => { setView("admin"); setNavigationOpen(false); }}><LayoutGrid size={26} /><span><strong>Administración</strong><small>Informes, productos, stock y configuración</small></span></button></aside></div>}
       {!installed && installPrompt && <button className="pwa-install-button" onClick={async () => { await installPrompt.prompt(); const choice = await installPrompt.userChoice; if (choice.outcome === "accepted") setInstallPrompt(null); }}><Smartphone size={18} /> Instalar en tablet</button>}
       <button className="admin-launcher" onClick={() => setView((current) => current === "pos" ? "admin" : "pos")} title={view === "pos" ? "Abrir administración" : "Volver al TPV"}>{view === "pos" ? <LayoutGrid size={19} /> : <ShoppingBag size={19} />}</button>
     </>

@@ -296,3 +296,51 @@ button:disabled { cursor: not-allowed; }
 .checkbox-label input { accent-color: #5a9362; }
 @media (max-width:900px) { .loyverse-config-grid { grid-template-columns: 1fr 1fr; }.loyverse-token-field { grid-column: 1 / -1; } }
 @media (max-width:600px) { .loyverse-config-grid { grid-template-columns: 1fr; }.loyverse-token-field { grid-column: auto; }.loyverse-config-actions { align-items: stretch; flex-direction: column; }.loyverse-config-actions .primary-button { width: 100%; } }
+
+
+/* Navegación principal táctil */
+.pos-header__menu-button { width: 52px; height: 48px; display: grid; place-items: center; border-radius: 8px; background: rgba(255,255,255,.13); }
+.pos-header__menu-button:hover { background: rgba(255,255,255,.24); }
+.admin-mobile-menu { display: none; width: 46px; height: 44px; place-items: center; margin-right: 12px; border: none; border-radius: 7px; color: #fff; background: rgba(255,255,255,.14); }
+.admin-mobile-menu:hover { background: rgba(255,255,255,.25); }
+.navigation-overlay { position: fixed; z-index: 100; inset: 0; display: flex; align-items: stretch; background: rgba(18,39,25,.44); backdrop-filter: blur(2px); }
+.navigation-drawer { width: min(390px, 90vw); display: flex; flex-direction: column; gap: 14px; padding: 24px; background: #fff; box-shadow: 14px 0 34px rgba(18,48,25,.2); animation: navigation-drawer-in .18s ease-out; }
+.navigation-drawer__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid #e4ece3; }
+.navigation-drawer__header h2 { margin-top: 5px; color: #254a31; font-size: 22px; }
+.navigation-close { width: 48px; height: 48px; display: grid; place-items: center; border: none; border-radius: 9px; color: #58705d; background: #f1f6f0; }
+.navigation-close:hover { color: #bb4937; background: #fff0ec; }
+.navigation-option { min-height: 88px; display: flex; align-items: center; gap: 17px; padding: 15px 18px; border: 2px solid #dfe9dd; border-radius: 12px; color: #4f7156; background: #fff; text-align: left; }
+.navigation-option:hover,.navigation-option--active { border-color: #76ad32; color: #315f35; background: #f1f9ec; }
+.navigation-option > svg { flex: none; color: #6fa634; }
+.navigation-option span { display: grid; gap: 5px; }
+.navigation-option strong { color: #294c32; font-size: 18px; }
+.navigation-option small { color: #849487; font-size: 11px; line-height: 1.35; }
+@keyframes navigation-drawer-in { from { opacity: .5; transform: translateX(-18px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width:760px) {
+  .admin-mobile-menu { display: grid; }
+  .admin-topbar { justify-content: flex-start; }
+  .admin-topbar > div:nth-child(2) { min-width: 0; }
+  .admin-topbar__actions { margin-left: auto; }
+  .pos-header__menu-button { width: 54px; height: 50px; }
+  .navigation-drawer { width: min(420px, 92vw); padding: 20px; }
+  .navigation-option { min-height: 82px; }
+}
+@media (min-width:761px) {
+  .admin-mobile-menu { display: grid; }
+  .admin-topbar { justify-content: flex-start; }
+  .admin-topbar > div:nth-child(2) { min-width: 0; }
+  .admin-topbar__actions { margin-left: auto; }
+}
+@media (max-width:480px) {
+  .navigation-drawer { width: 94vw; padding: 17px; }
+  .navigation-option { min-height: 76px; padding: 13px; }
+  .navigation-option strong { font-size: 16px; }
+}
+.report-family-bars { display: grid; gap: 13px; }
+.report-family-bar { display: grid; gap: 6px; }
+.report-family-bar > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.report-family-bar strong { overflow: hidden; color: #3d5e43; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.report-family-bar span { color: #879589; font-family: "DM Mono",monospace; font-size: 9px; white-space: nowrap; }
+.report-family-bar__track { height: 10px; overflow: hidden; border-radius: 99px; background: #edf3eb; }
+.report-family-bar__fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg,#8fc54f,#5f9e31); transition: width .25s ease; }
+@media (max-width:760px) { .report-family-bar > div:first-child { align-items: flex-start; flex-direction: column; gap: 3px; } }
