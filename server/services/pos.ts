@@ -673,13 +673,21 @@ export async function createPromotion(input: { productId: number; name: string; 
   const categoryIds = [...new Set(input.slots.map((slot) => slot.categoryId))];
   const categoryRows = await database.select().from(categories).where(and(inArray(categories.id, categoryIds), eq(categories.isActive, true)));
   if (categoryRows.length !== categoryIds.length) throw new Error("Una familia de la promoción no existe o está inactiva.");
+  const activeCategoryRows = await database.select({ id: categories.id, parentCategoryId: categories.parentCategoryId }).from(categories).where(eq(categories.isActive, true));
+  const allowedCategoryIdsByParent = new Map<number, Set<number>>();
+  for (const slot of input.slots) {
+    const allowed = new Set<number>([slot.categoryId]);
+    for (const category of activeCategoryRows) if (category.parentCategoryId === slot.categoryId) allowed.add(category.id);
+    allowedCategoryIdsByParent.set(slot.categoryId, allowed);
+  }
   const productIds = [...new Set(input.slots.flatMap((slot) => slot.productIds))];
   if (productIds.length === 0 || productIds.length > 100) throw new Error("Selecciona al menos un artículo permitido.");
   const productRows = await database.select({ id: products.id, categoryId: products.categoryId, isActive: products.isActive }).from(products).where(and(inArray(products.id, productIds), eq(products.isActive, true)));
   if (productRows.length !== productIds.length) throw new Error("Uno de los artículos permitidos no existe o está inactivo.");
   for (const slot of input.slots) {
     if (!slot.label.trim() || slot.productIds.length === 0) throw new Error("Cada familia debe tener una etiqueta y al menos un artículo permitido.");
-    if (slot.productIds.some((productId) => productRows.find((product) => product.id === productId)?.categoryId !== slot.categoryId)) throw new Error("Los artículos permitidos deben pertenecer a la familia seleccionada.");
+    const allowedCategoryIds = allowedCategoryIdsByParent.get(slot.categoryId) ?? new Set<number>([slot.categoryId]);
+    if (slot.productIds.some((productId) => !allowedCategoryIds.has(productRows.find((product) => product.id === productId)?.categoryId ?? -1))) throw new Error("Los artículos permitidos deben pertenecer a la familia seleccionada o a una de sus subfamilias.");
   }
   return database.transaction(async (tx) => {
     const inserted = await tx.insert(promotions).values({ productId: input.productId, name: input.name.trim(), comboPrice: money(input.comboPrice), isActive: true });

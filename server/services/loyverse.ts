@@ -64,6 +64,18 @@ function asNumber(value: unknown, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asMoneyNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number" || typeof value === "string") return asNumber(value, fallback);
+  const object = asObject(value);
+  for (const key of ["amount", "value", "price", "cost", "purchase_cost", "purchaseCost"]) {
+    if (object[key] !== undefined && object[key] !== null) {
+      const parsed = asNumber(object[key], Number.NaN);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return fallback;
+}
+
 function asDecimal(value: unknown, scale = 2) {
   return asNumber(value).toFixed(scale);
 }
@@ -241,8 +253,8 @@ async function upsertVariant(variant: JsonObject, itemLoyverseId?: string) {
     option1Value: asString(variant.option1_value),
     option2Value: asString(variant.option2_value),
     option3Value: asString(variant.option3_value),
-    cost: variant.cost === null || variant.cost === undefined ? null : asDecimal(variant.cost),
-    purchaseCost: variant.purchase_cost === null || variant.purchase_cost === undefined ? null : asDecimal(variant.purchase_cost),
+    cost: variant.cost === null || variant.cost === undefined ? null : asDecimal(asMoneyNumber(variant.cost)),
+    purchaseCost: variant.purchase_cost === null || variant.purchase_cost === undefined ? null : asDecimal(asMoneyNumber(variant.purchase_cost)),
     defaultPrice: variant.default_price === null || variant.default_price === undefined ? null : asDecimal(variant.default_price),
     deletedAt: asDate(variant.deleted_at),
     remoteCreatedAt: asDate(variant.created_at),
