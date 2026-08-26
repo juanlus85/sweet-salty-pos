@@ -64,7 +64,15 @@ function buildSalesRanges(from: string, to: string) {
 }
 
 async function syncSalesInChunks(from: string, to: string) {
-  const ranges = buildSalesRanges(from, to);
+  let effectiveFrom = from;
+  let effectiveTo = to;
+  if (!from && !to) {
+    const available = await api<{ firstReceiptDate: string | null; lastReceiptDate: string | null }>("/admin/loyverse/sales-range");
+    if (!available.firstReceiptDate || !available.lastReceiptDate) return { receipts: 0, shifts: 0, chunks: 0, noData: true };
+    effectiveFrom = available.firstReceiptDate.slice(0, 10);
+    effectiveTo = available.lastReceiptDate.slice(0, 10);
+  }
+  const ranges = buildSalesRanges(effectiveFrom, effectiveTo);
   let receipts = 0;
   let shifts = 0;
   for (const range of ranges) {
@@ -72,7 +80,7 @@ async function syncSalesInChunks(from: string, to: string) {
     receipts += result.receipts;
     shifts += result.shifts;
   }
-  return { receipts, shifts, chunks: ranges.length };
+  return { receipts, shifts, chunks: ranges.length, noData: false };
 }
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
@@ -477,7 +485,7 @@ function AdminScreen({ onBack }: { onBack: () => void }) {
   });
   const syncLoyverseSalesMutation = useMutation({
     mutationFn: () => syncSalesInChunks(loyverseFrom, loyverseTo),
-    onSuccess: (result) => { toast.success("Ventas de Loyverse importadas", { description: `${result.receipts} recibos · ${result.shifts} turnos · ${result.chunks} tramo${result.chunks === 1 ? "" : "s"}. Solo lectura.` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
+    onSuccess: (result) => { if (result.noData) toast.info("Loyverse no tiene recibos en la cuenta o tienda seleccionada"); else toast.success("Ventas de Loyverse importadas", { description: `${result.receipts} recibos · ${result.shifts} turnos · ${result.chunks} tramo${result.chunks === 1 ? "" : "s"}. Solo lectura.` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
     onError: (error) => toast.error("No se han podido importar las ventas de Loyverse", { description: error.message }),
   });
   const syncLoyverseAllMutation = useMutation({

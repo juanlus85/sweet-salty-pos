@@ -328,6 +328,15 @@ apiRouter.post("/admin/loyverse/import/catalog", async (req, res, next) => {
   }
 });
 
+apiRouter.get("/admin/loyverse/sales-range", async (_req, res, next) => {
+  try {
+    const { getLoyverseSalesRange } = await import("./services/loyverse");
+    res.json(await getLoyverseSalesRange());
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.post("/admin/loyverse/sync/sales", async (req, res, next) => {
   try {
     const parseDate = (value: unknown) => typeof value === "string" && value ? new Date(value) : undefined;

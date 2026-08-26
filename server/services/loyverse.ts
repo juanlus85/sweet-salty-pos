@@ -377,6 +377,22 @@ export async function syncLoyverseCatalog() {
   }
 }
 
+export async function getLoyverseSalesRange() {
+  const config = await ensureConfigured();
+  const [oldestResponse, newestResponse] = await Promise.all([
+    loyverseRequest("/receipts", { order: "created_at_asc", limit: "1", store_id: config.storeId || undefined }),
+    loyverseRequest("/receipts", { order: "created_at_desc", limit: "1", store_id: config.storeId || undefined }),
+  ]);
+  const oldest = asArray(oldestResponse.receipts)[0];
+  const newest = asArray(newestResponse.receipts)[0];
+  return {
+    firstReceiptDate: oldest ? receiptDate(oldest)?.toISOString() || null : null,
+    lastReceiptDate: newest ? receiptDate(newest)?.toISOString() || null : null,
+    firstReceiptNumber: oldest ? asString(oldest.receipt_number) : null,
+    lastReceiptNumber: newest ? asString(newest.receipt_number) : null,
+  };
+}
+
 export async function syncLoyverseSales(range: SyncDateRange = {}) {
   const config = await ensureConfigured();
   const effectiveRange = normalizedSalesRange(range);
