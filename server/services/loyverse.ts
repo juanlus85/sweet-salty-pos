@@ -76,6 +76,14 @@ function asMoneyNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
+function firstPositiveMoney(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = asMoneyNumber(value, 0);
+    if (parsed > 0) return parsed;
+  }
+  return 0;
+}
+
 function asDecimal(value: unknown, scale = 2) {
   return asNumber(value).toFixed(scale);
 }
@@ -253,8 +261,8 @@ async function upsertVariant(variant: JsonObject, itemLoyverseId?: string) {
     option1Value: asString(variant.option1_value),
     option2Value: asString(variant.option2_value),
     option3Value: asString(variant.option3_value),
-    cost: variant.cost === null || variant.cost === undefined ? null : asDecimal(asMoneyNumber(variant.cost)),
-    purchaseCost: variant.purchase_cost === null || variant.purchase_cost === undefined ? null : asDecimal(asMoneyNumber(variant.purchase_cost)),
+    cost: firstPositiveMoney(variant.cost, variant.default_cost, variant.average_cost) > 0 ? asDecimal(firstPositiveMoney(variant.cost, variant.default_cost, variant.average_cost)) : null,
+    purchaseCost: firstPositiveMoney(variant.purchase_cost, variant.purchaseCost, variant.purchase_price) > 0 ? asDecimal(firstPositiveMoney(variant.purchase_cost, variant.purchaseCost, variant.purchase_price)) : null,
     defaultPrice: variant.default_price === null || variant.default_price === undefined ? null : asDecimal(variant.default_price),
     deletedAt: asDate(variant.deleted_at),
     remoteCreatedAt: asDate(variant.created_at),
@@ -485,7 +493,7 @@ export async function getLoyverseDashboard(range: SyncDateRange = {}, storeId?: 
     const itemStocks = itemVariants.map((variant) => stockMap.get(variant.loyverseId) ?? 0);
     const firstVariant = itemVariants[0];
     const firstPrice = firstVariant ? priceMap.get(firstVariant.loyverseId) : undefined;
-    return { id: item.loyverseId, name: item.itemName, category: item.categoryLoyverseId ? categoryMap.get(item.categoryLoyverseId) || "Sin familia" : "Sin familia", imageUrl: item.imageUrl, sku: firstVariant?.sku || null, barcode: firstVariant?.barcode || null, variants: itemVariants.length, price: firstPrice?.price === null || firstPrice?.price === undefined ? firstVariant?.defaultPrice : firstPrice.price, cost: firstVariant ? (Number(firstVariant.purchaseCost) > 0 ? Number(firstVariant.purchaseCost) : Number(firstVariant.cost)) : null, stock: itemStocks.reduce((sum, value) => sum + value, 0), availableForSale: itemPrices.length === 0 ? true : itemPrices.some((price) => price?.availableForSale !== false), deleted: Boolean(item.deletedAt), updatedAt: item.remoteUpdatedAt };
+    return { id: item.loyverseId, name: item.itemName, category: item.categoryLoyverseId ? categoryMap.get(item.categoryLoyverseId) || "Sin familia" : "Sin familia", imageUrl: item.imageUrl, sku: firstVariant?.sku || null, barcode: firstVariant?.barcode || null, variants: itemVariants.length, price: firstPrice?.price === null || firstPrice?.price === undefined ? firstVariant?.defaultPrice : firstPrice.price, cost: firstVariant ? firstPositiveMoney(firstVariant.purchaseCost, firstVariant.cost) || null : null, stock: itemStocks.reduce((sum, value) => sum + value, 0), availableForSale: itemPrices.length === 0 ? true : itemPrices.some((price) => price?.availableForSale !== false), deleted: Boolean(item.deletedAt), updatedAt: item.remoteUpdatedAt };
   });
   const selectedReceipts = selectedStoreId ? receipts.filter((receipt) => !receipt.storeLoyverseId || receipt.storeLoyverseId === selectedStoreId) : receipts;
   const selectedReceiptIds = new Set(selectedReceipts.map((receipt) => receipt.id));
