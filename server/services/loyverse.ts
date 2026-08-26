@@ -19,7 +19,8 @@ const DEFAULT_API_BASE = "https://api.loyverse.com/v1.0";
 const PAGE_LIMIT = 250;
 const MAX_PAGES = 1000;
 const REQUEST_TIMEOUT_MS = 60_000;
-const DEFAULT_SALES_LOOKBACK_DAYS = 90;
+const DEFAULT_SALES_LOOKBACK_DAYS = 14;
+const MAX_SALES_RANGE_DAYS = 14;
 
 let activeSync: Promise<unknown> | null = null;
 
@@ -74,6 +75,15 @@ function asDate(value: unknown): Date | null {
 
 function dateParam(value?: Date) {
   return value?.toISOString();
+}
+
+function normalizedSalesRange(range: SyncDateRange): Required<SyncDateRange> {
+  const to = range.to || new Date();
+  const from = range.from || new Date(to.getTime() - (DEFAULT_SALES_LOOKBACK_DAYS - 1) * 24 * 60 * 60 * 1000);
+  if (from.getTime() > to.getTime()) throw new Error("El periodo de ventas de Loyverse no es válido: la fecha inicial es posterior a la final.");
+  const maximumRangeMs = MAX_SALES_RANGE_DAYS * 24 * 60 * 60 * 1000;
+  if (to.getTime() - from.getTime() > maximumRangeMs) throw new Error(`El tramo de ventas no puede superar ${MAX_SALES_RANGE_DAYS} días. Selecciona un periodo menor o utiliza la sincronización por tramos.`);
+  return { from, to };
 }
 
 async function runBatches<T>(items: T[], worker: (item: T) => Promise<void>, batchSize = 5) {
@@ -369,7 +379,7 @@ export async function syncLoyverseCatalog() {
 
 export async function syncLoyverseSales(range: SyncDateRange = {}) {
   await ensureConfigured();
-  const effectiveRange = range.from || range.to ? range : { from: new Date(Date.now() - DEFAULT_SALES_LOOKBACK_DAYS * 24 * 60 * 60 * 1000), to: new Date() };
+  const effectiveRange = normalizedSalesRange(range);
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
   try {
