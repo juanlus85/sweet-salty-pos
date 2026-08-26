@@ -1335,7 +1335,6 @@ async function ensureLoyverseTaxesSchema() {
 
 export async function importLoyverseCatalogToOperational(requestedStoreId?: string) {
   await ensureLoyverseTaxesSchema();
-  const categoryRestoration = await restoreLegacyLocalCategories();
   const database = requireDb();
   const [settingsRows, syncStates, remoteItems, remoteTaxes, remoteVariants, remotePrices, remoteInventory, localCategories, localProducts, localBalances] = await Promise.all([
     database.select().from(posSettings).limit(1),
@@ -1373,17 +1372,8 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
   const imported = await database.transaction(async (tx) => {
     let categoriesCreated = 0;
     const categoriesUpdated = 0;
-    let fallbackCategory = localCategories.find((category) => normalizeCatalogText(category.name) === "articulos sin asignar") ?? null;
-    const ensureFallbackCategory = async () => {
-      if (fallbackCategory) return fallbackCategory;
-      const inserted = await tx.insert(categories).values({ name: "Artículos sin asignar", color: "#6B7280", iconName: "Package", sortOrder: 999, isActive: true }).$returningId();
-      fallbackCategory = { id: Number(inserted[0]?.id), loyverseId: null, name: "Artículos sin asignar", parentCategoryId: null, color: "#6B7280", imageUrl: null, iconName: "Package", sortOrder: 999, isFeatured: false, isPromotion: false, isActive: true, createdAt: new Date(), updatedAt: new Date() } as typeof localCategories[number];
-      localCategories.push(fallbackCategory);
-      categoriesCreated += 1;
-      return fallbackCategory;
-    };
-
-    const fallback = await ensureFallbackCategory();
+    const fallback = localCategories.find((category) => normalizeCatalogText(category.name) === "articulos sin asignar");
+    if (!fallback) throw new Error("No existe la familia local «Artículos sin asignar». Créala antes de importar artículos nuevos.");
 
     const productByVariant = new Map<string, typeof localProducts[number]>();
     const productBySku = new Map<string, typeof localProducts[number]>();
@@ -1488,7 +1478,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         }
       }
     }
-    return { categoriesCreated, categoriesUpdated, categoriesRestored: categoryRestoration.restoredCategories, productsReassigned: categoryRestoration.reassignedProducts, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, taxesAvailable: remoteTaxes.length, productsWithRemoteVat, productsUsingVatFallback, skipped, skippedDetails, storeId: availableStoreId };
+    return { categoriesCreated, categoriesUpdated, categoriesRestored: 0, productsReassigned: 0, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, taxesAvailable: remoteTaxes.length, productsWithRemoteVat, productsUsingVatFallback, skipped, skippedDetails, storeId: availableStoreId };
   });
   return { success: true, ...imported };
 }
