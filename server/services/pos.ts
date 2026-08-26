@@ -181,7 +181,7 @@ export async function createProduct(input: {
       sku: input.sku?.trim() || null,
       barcode: input.barcode?.trim() || null,
       imageUrl: input.imageUrl?.trim() || null,
-      imageZoom: money(Math.min(3, Math.max(1, input.imageZoom ?? 1))),
+      imageZoom: money(Math.min(3, Math.max(0.5, input.imageZoom ?? 1))),
       imagePositionX: money(Math.min(100, Math.max(0, input.imagePositionX ?? 50))),
       imagePositionY: money(Math.min(100, Math.max(0, input.imagePositionY ?? 50))),
       primarySupplierId: input.primarySupplierId ?? null,
@@ -802,7 +802,7 @@ export async function updateProduct(input: {
   if (input.showInTpv !== undefined) updateSet.showInTpv = input.showInTpv;
   if (input.isActive !== undefined) updateSet.isActive = input.isActive;
   if (input.imageUrl !== undefined) updateSet.imageUrl = input.imageUrl?.trim() || null;
-  if (input.imageZoom !== undefined) updateSet.imageZoom = money(Math.min(3, Math.max(1, input.imageZoom)));
+  if (input.imageZoom !== undefined) updateSet.imageZoom = money(Math.min(3, Math.max(0.5, input.imageZoom)));
   if (input.imagePositionX !== undefined) updateSet.imagePositionX = money(Math.min(100, Math.max(0, input.imagePositionX)));
   if (input.imagePositionY !== undefined) updateSet.imagePositionY = money(Math.min(100, Math.max(0, input.imagePositionY)));
   if (input.sku !== undefined) updateSet.sku = input.sku?.trim() || null;

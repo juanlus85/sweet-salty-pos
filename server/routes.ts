@@ -38,7 +38,7 @@ const createProductSchema = z.object({
   sku: z.string().trim().max(100).optional(),
   barcode: z.string().trim().max(100).optional(),
   imageUrl: mediaPathSchema.optional(),
-  imageZoom: z.number().min(1).max(3).optional(),
+  imageZoom: z.number().min(0.5).max(3).optional(),
   imagePositionX: z.number().min(0).max(100).optional(),
   imagePositionY: z.number().min(0).max(100).optional(),
   primarySupplierId: z.number().int().positive().optional(),
@@ -543,7 +543,7 @@ apiRouter.patch("/admin/products/:id", async (req, res, next) => {
       vatTypeId: z.number().int().positive().nullable().optional(),
       lastPurchaseCost: z.number().nonnegative().optional(),
       weightedAverageCost: z.number().nonnegative().optional(),
-      imageZoom: z.number().min(1).max(3).optional(),
+      imageZoom: z.number().min(0.5).max(3).optional(),
       imagePositionX: z.number().min(0).max(100).optional(),
       imagePositionY: z.number().min(0).max(100).optional(),
     }), req.body);
