@@ -335,6 +335,9 @@ async function upsertReceipt(receipt: JsonObject, itemNames: Map<string, string>
   for (let index = 0; index < lineItems.length; index += 1) {
     const line = lineItems[index];
     const itemId = asString(line.item_id);
+    const lineQuantity = asNumber(line.quantity);
+    const lineCost = asMoneyNumber(line.cost);
+    const lineCostTotal = firstPositiveMoney(line.cost_total, line.costTotal, lineCost * lineQuantity);
     const valuesLine = {
       receiptId,
       lineIndex: index,
@@ -345,8 +348,8 @@ async function upsertReceipt(receipt: JsonObject, itemNames: Map<string, string>
       price: asDecimal(line.price),
       grossTotalMoney: asDecimal(line.gross_total_money ?? line.total_money),
       totalMoney: asDecimal(line.total_money),
-      cost: asDecimal(line.cost),
-      costTotal: asDecimal(line.cost_total),
+      cost: asDecimal(lineCost),
+      costTotal: asDecimal(lineCostTotal),
       rawData: line,
     };
     await database.insert(loyverseReceiptLines).values(valuesLine);
@@ -385,9 +388,18 @@ export async function syncLoyverseCatalog() {
     const stores = await fetchAll("/stores", "stores", { show_deleted: "true" });
     const categories = await fetchAll("/categories", "categories", { show_deleted: "true" });
     const items = await fetchAll("/items", "items", { show_deleted: "true" });
+    let variants: JsonObject[] = [];
+    try {
+      variants = await fetchAll("/variants", "variants", { show_deleted: "true" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!/HTTP (403|404|405)/.test(message)) throw error;
+      variants = items.flatMap((item) => asArray(item.variants).map((variant) => ({ ...variant, item_id: variant.item_id ?? item.id })));
+    }
     await runBatches(stores, upsertStore);
     await runBatches(categories, upsertCategory);
     await runBatches(items, upsertItem, 4);
+    await runBatches(variants, (variant) => upsertVariant(variant), 8);
     const storeIds = stores.map((store) => asString(store.id)).filter((id): id is string => Boolean(id));
     const inventory = await fetchAll("/inventory", "inventory_levels", { store_ids: storeIds.length ? storeIds.join(",") : undefined });
     await runBatches(inventory, upsertInventory, 8);
@@ -395,7 +407,7 @@ export async function syncLoyverseCatalog() {
     const activeStore = stores.find((store) => asString(store.id) === activeStoreId);
     const finishedAt = new Date();
     await saveSyncState({ merchantId: asString(merchant.id), merchantName: asString(merchant.name), activeStoreId, activeStoreName: asString(activeStore?.name), catalogSyncedAt: finishedAt, lastSyncFinishedAt: finishedAt, lastSyncStatus: "success", lastSyncError: null });
-    return { success: true, merchantName: asString(merchant.name), stores: stores.length, categories: categories.length, items: items.length, inventoryLevels: inventory.length, syncedAt: finishedAt.toISOString() };
+    return { success: true, merchantName: asString(merchant.name), stores: stores.length, categories: categories.length, items: items.length, variants: variants.length, inventoryLevels: inventory.length, syncedAt: finishedAt.toISOString() };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido al sincronizar Loyverse.";
     await saveSyncState({ lastSyncFinishedAt: new Date(), lastSyncStatus: "error", lastSyncError: message });

@@ -689,7 +689,41 @@ export async function updateCategory(input: { id: number; name?: string; color?:
   return { success: true };
 }
 
+async function ensurePromotionSchema() {
+  const database = requireDb();
+  await database.execute(sql`CREATE TABLE IF NOT EXISTS pos_promotions (
+    id INT AUTO_INCREMENT NOT NULL,
+    product_id INT NOT NULL,
+    name VARCHAR(160) NOT NULL,
+    combo_price DECIMAL(12,2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY pos_promotions_product_unique (product_id)
+  )`);
+  await database.execute(sql`CREATE TABLE IF NOT EXISTS pos_promotion_slots (
+    id INT AUTO_INCREMENT NOT NULL,
+    promotion_id INT NOT NULL,
+    position INT NOT NULL,
+    label VARCHAR(100) NOT NULL,
+    category_id INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY pos_promotion_slots_position_unique (promotion_id, position)
+  )`);
+  await database.execute(sql`CREATE TABLE IF NOT EXISTS pos_promotion_slot_products (
+    id INT AUTO_INCREMENT NOT NULL,
+    slot_id INT NOT NULL,
+    product_id INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY pos_promotion_slot_products_unique (slot_id, product_id)
+  )`);
+}
+
 export async function listPromotions() {
+  await ensurePromotionSchema();
   const database = requireDb();
   const rows = await database.select({ promotion: promotions, productName: products.name, categoryId: products.categoryId, categoryName: categories.name }).from(promotions).innerJoin(products, eq(products.id, promotions.productId)).innerJoin(categories, eq(categories.id, products.categoryId)).orderBy(asc(promotions.name));
   const slotRows = rows.length ? await database.select().from(promotionSlots).where(inArray(promotionSlots.promotionId, rows.map((row) => row.promotion.id))).orderBy(asc(promotionSlots.position)) : [];
@@ -698,6 +732,7 @@ export async function listPromotions() {
 }
 
 export async function createPromotion(input: { productId: number; name: string; comboPrice: number; slots: Array<{ label: string; categoryId: number; productIds: number[] }> }) {
+  await ensurePromotionSchema();
   const database = requireDb();
   if (input.slots.length < 1 || input.slots.length > 3) throw new Error("Una promoción debe tener entre 1 y 3 familias.");
   const promotionProduct = await database.select().from(products).innerJoin(categories, eq(categories.id, products.categoryId)).where(and(eq(products.id, input.productId), eq(categories.isPromotion, true))).limit(1);
@@ -722,18 +757,29 @@ export async function createPromotion(input: { productId: number; name: string; 
     if (slot.productIds.some((productId) => !allowedCategoryIds.has(productRows.find((product) => product.id === productId)?.categoryId ?? -1))) throw new Error("Los artículos permitidos deben pertenecer a la familia seleccionada o a una de sus subfamilias.");
   }
   return database.transaction(async (tx) => {
-    const inserted = await tx.insert(promotions).values({ productId: input.productId, name: input.name.trim(), comboPrice: money(input.comboPrice), isActive: true });
-    const promotionId = Number(inserted[0].insertId);
+    const existingRows = await tx.select({ id: promotions.id }).from(promotions).where(eq(promotions.productId, input.productId)).limit(1);
+    let promotionId: number;
+    if (existingRows[0]) {
+      promotionId = existingRows[0].id;
+      const oldSlots = await tx.select({ id: promotionSlots.id }).from(promotionSlots).where(eq(promotionSlots.promotionId, promotionId));
+      if (oldSlots.length) await tx.delete(promotionSlotProducts).where(inArray(promotionSlotProducts.slotId, oldSlots.map((slot) => slot.id)));
+      await tx.delete(promotionSlots).where(eq(promotionSlots.promotionId, promotionId));
+      await tx.update(promotions).set({ name: input.name.trim(), comboPrice: money(input.comboPrice), isActive: true }).where(eq(promotions.id, promotionId));
+    } else {
+      const inserted = await tx.insert(promotions).values({ productId: input.productId, name: input.name.trim(), comboPrice: money(input.comboPrice), isActive: true });
+      promotionId = Number(inserted[0].insertId);
+    }
     for (const [index, slot] of input.slots.entries()) {
       const insertedSlot = await tx.insert(promotionSlots).values({ promotionId, position: index + 1, label: slot.label.trim(), categoryId: slot.categoryId });
       const slotId = Number(insertedSlot[0].insertId);
       await tx.insert(promotionSlotProducts).values(slot.productIds.map((productId) => ({ slotId, productId })));
     }
-    return { id: promotionId };
+    return { id: promotionId, replaced: Boolean(existingRows[0]) };
   });
 }
 
 export async function updatePromotion(input: { id: number; productId: number; name: string; comboPrice: number; slots: Array<{ label: string; categoryId: number; productIds: number[] }> }) {
+  await ensurePromotionSchema();
   const existing = await listPromotions();
   if (!existing.find((promotion) => promotion.id === input.id)) throw new Error("No se encontró la promoción.");
   return requireDb().transaction(async (tx) => {
@@ -749,6 +795,7 @@ export async function updatePromotion(input: { id: number; productId: number; na
 }
 
 export async function deactivatePromotion(id: number) {
+  await ensurePromotionSchema();
   const database = requireDb();
   await database.update(promotions).set({ isActive: false }).where(eq(promotions.id, id));
   return { success: true };
@@ -1296,6 +1343,9 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
     let productsCreated = 0;
     let productsUpdated = 0;
     let stockUpdated = 0;
+    let costVariantsAvailable = 0;
+    let costsUpdated = 0;
+    let costsPreserved = 0;
     let skipped = 0;
     const skippedDetails: string[] = [];
 
@@ -1312,6 +1362,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         const remoteCost = toNumber(variant.cost);
         const receiptCost = cachedReceiptCostByVariant.get(variant.loyverseId) ?? 0;
         const importedCost = remotePurchaseCost > 0 ? remotePurchaseCost : remoteCost > 0 ? remoteCost : receiptCost;
+        if (importedCost > 0) costVariantsAvailable += 1;
         const stockAfter = stockByVariant.get(variant.loyverseId) ?? 0;
         const skuKey = normalizeCatalogText(skuValue);
         const barcodeKey = normalizeCatalogText(barcodeValue);
@@ -1334,10 +1385,13 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
             local = { id: productId, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), equivalenceSurchargeRate: money(importedSurchargeRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             localProducts.push(local);
             productsCreated += 1;
+            if (effectiveCost > 0) costsUpdated += 1;
           } else {
             await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)), ...(effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0 ? { lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost) } : {}) }).where(eq(products.id, local.id));
             local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: importedVatTypeId, vatRate: money(importedVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             productsUpdated += 1;
+            if (effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0) costsUpdated += 1;
+            else if (localWeightedCost > 0 || localLastCost > 0) costsPreserved += 1;
           }
           productByVariant.set(variant.loyverseId, local);
           if (local.sku) productBySku.set(normalizeCatalogText(local.sku), local);
@@ -1366,7 +1420,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         }
       }
     }
-    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, skipped, skippedDetails, storeId: availableStoreId };
+    return { categoriesCreated, categoriesUpdated, productsCreated, productsUpdated, stockUpdated, costVariantsAvailable, costsUpdated, costsPreserved, skipped, skippedDetails, storeId: availableStoreId };
   });
   return { success: true, ...imported };
 }

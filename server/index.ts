@@ -38,8 +38,14 @@ app.get("*", (req, res, next) => {
 });
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const message = error instanceof Error ? error.message : "Error interno del servidor";
-  const status = /vacío|inválid|insuficiente|menor|cerrada|disponible|configurada/i.test(message) ? 400 : 500;
+  const originalMessage = error instanceof Error ? error.message : "Error interno del servidor";
+  const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+  const causeCode = cause && typeof cause === "object" && "code" in cause ? String((cause as { code?: unknown }).code) : "";
+  let message = originalMessage;
+  if (causeCode === "ER_NO_SUCH_TABLE") message = "Falta una tabla de la aplicación. Reinicia el TPV para que complete la preparación automática de la base de datos.";
+  else if (causeCode === "ER_DUP_ENTRY") message = "Ya existe una promoción para ese artículo combo. El guardado debe actualizarla en lugar de duplicarla.";
+  else if (causeCode === "ER_BAD_FIELD_ERROR") message = "La base de datos tiene una versión de columnas anterior. Aplica las migraciones pendientes y reinicia el TPV.";
+  const status = /vacío|inválid|insuficiente|menor|cerrada|disponible|configurada|falta|existe una promoción|versión de columnas/i.test(message) ? 400 : 500;
   if (status === 500) console.error("[SweetSaltyPOS]", error);
   res.status(status).json({ error: message });
 });
