@@ -378,7 +378,7 @@ export async function syncLoyverseCatalog() {
 }
 
 export async function syncLoyverseSales(range: SyncDateRange = {}) {
-  await ensureConfigured();
+  const config = await ensureConfigured();
   const effectiveRange = normalizedSalesRange(range);
   const startedAt = new Date();
   await saveSyncState({ lastSyncStartedAt: startedAt, lastSyncStatus: "running", lastSyncError: null });
@@ -386,8 +386,8 @@ export async function syncLoyverseSales(range: SyncDateRange = {}) {
     const database = requireDb();
     const [items, receipts, shifts] = await Promise.all([
       database.select().from(loyverseItems),
-      fetchAll("/receipts", "receipts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), order: "created_at_asc" }),
-      fetchAll("/shifts", "shifts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to) }),
+      fetchAll("/receipts", "receipts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), order: "created_at_asc", store_id: config.storeId || undefined }),
+      fetchAll("/shifts", "shifts", { created_at_min: dateParam(effectiveRange.from), created_at_max: dateParam(effectiveRange.to), store_ids: config.storeId || undefined }),
     ]);
     const itemNames = new Map(items.map((item) => [item.loyverseId, item.itemName]));
     await runBatches(receipts, (receipt) => upsertReceipt(receipt, itemNames), 4);
