@@ -148,7 +148,7 @@ export async function createProduct(input: {
   const database = requireDb();
   const initialStock = input.initialStock ?? 0;
   const result = await database.transaction(async (tx) => {
-    let resolvedVatRate = input.vatRate ?? 7;
+    let resolvedVatRate = input.vatRate ?? 10;
     if (input.vatTypeId) {
       const selectedVat = await tx.select({ rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.id, input.vatTypeId), eq(vatTypes.isActive, true))).limit(1);
       if (!selectedVat[0]) throw new Error("El tipo de IVA seleccionado no existe o está inactivo.");
@@ -1252,7 +1252,8 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
     }
     const localCategoryById = new Map(localCategories.map((category) => [category.id, category]));
     const balanceByProduct = new Map(localBalances.map((balance) => [balance.productId, balance]));
-    const defaultVatRate = toNumber(settingsRows[0]?.defaultVatRate ?? 10);
+    const configuredDefaultVatRate = toNumber(settingsRows[0]?.defaultVatRate ?? 10);
+    const defaultVatRate = [0, 4, 10, 21].includes(configuredDefaultVatRate) ? configuredDefaultVatRate : 10;
     const defaultVat = await tx.select({ id: vatTypes.id, rate: vatTypes.rate }).from(vatTypes).where(and(eq(vatTypes.isActive, true), eq(vatTypes.rate, money(defaultVatRate)))).limit(1);
     let productsCreated = 0;
     let productsUpdated = 0;
@@ -1291,8 +1292,8 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
             localProducts.push(local);
             productsCreated += 1;
           } else {
-            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)), ...(effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0 ? { lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost) } : {}) }).where(eq(products.id, local.id));
-            local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
+            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)), ...(effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0 ? { lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost) } : {}) }).where(eq(products.id, local.id));
+            local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             productsUpdated += 1;
           }
           productByVariant.set(variant.loyverseId, local);
