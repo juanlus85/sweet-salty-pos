@@ -18,7 +18,7 @@ import {
 } from "./services/pos";
 
 const checkoutSchema = z.object({
-  lines: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().positive(), unitPrice: z.number().nonnegative().optional(), discountPercent: z.number().min(0).max(100).optional(), pricingMode: z.enum(["normal", "discount", "cost", "free", "promotion"]).optional(), promotionId: z.number().int().positive().optional(), promotionSelections: z.array(z.number().int().positive()).max(3).optional() })).min(1),
+  lines: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().nonnegative(), unitPrice: z.number().nonnegative().optional(), discountPercent: z.number().min(0).max(100).optional(), pricingMode: z.enum(["normal", "discount", "cost", "free", "promotion"]).optional(), promotionId: z.number().int().positive().optional(), promotionSelections: z.array(z.number().int().positive()).max(3).optional() })).min(1),
   paymentMethod: z.enum(["cash", "card"]),
   receivedAmount: z.number().nonnegative().optional(),
   terminalReference: z.string().max(100).optional(),

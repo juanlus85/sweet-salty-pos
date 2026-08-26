@@ -239,9 +239,10 @@ export async function checkout(input: CheckoutInput) {
   const groupedLines = new Map<number, number>();
   const lineInputs = new Map<number, CheckoutInput["lines"][number]>();
   for (const line of input.lines) {
-    if (!Number.isInteger(line.productId) || !Number.isFinite(line.quantity) || line.quantity <= 0 || (line.unitPrice !== undefined && (!Number.isFinite(line.unitPrice) || line.unitPrice < 0)) || (line.discountPercent !== undefined && (!Number.isFinite(line.discountPercent) || line.discountPercent < 0 || line.discountPercent > 100))) {
+    if (!Number.isInteger(line.productId) || !Number.isInteger(line.quantity) || line.quantity < 0 || (line.unitPrice !== undefined && (!Number.isFinite(line.unitPrice) || line.unitPrice < 0)) || (line.discountPercent !== undefined && (!Number.isFinite(line.discountPercent) || line.discountPercent < 0 || line.discountPercent > 100))) {
       throw new Error("El ticket contiene una línea inválida.");
     }
+    if (line.quantity === 0) continue;
     if (line.promotionId) {
       if (!line.promotionSelections?.length) throw new Error("La promoción necesita seleccionar todos sus artículos.");
       continue;
@@ -249,7 +250,7 @@ export async function checkout(input: CheckoutInput) {
     groupedLines.set(line.productId, (groupedLines.get(line.productId) ?? 0) + line.quantity);
     lineInputs.set(line.productId, line);
   }
-  const promotionInputs = input.lines.filter((line) => line.promotionId);
+  const promotionInputs = input.lines.filter((line) => line.promotionId && line.quantity > 0);
   if (groupedLines.size === 0 && promotionInputs.length === 0) throw new Error("El ticket está vacío.");
 
   const activeSession = await getOrCreateCashSession();
