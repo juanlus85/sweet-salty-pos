@@ -74,7 +74,7 @@ export async function listCatalog(categoryId?: number, order: "alphabetical" | "
       unit: products.unit,
       salePrice: products.salePrice,
       vatRate: products.vatRate,
-      cost: products.weightedAverageCost,
+      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), 0)`,
       minimumStock: products.minimumStock,
       isFeatured: products.isFeatured,
       isActive: products.isActive,
@@ -107,6 +107,7 @@ export async function getFeaturedProducts() {
       unit: products.unit,
       salePrice: products.salePrice,
       vatRate: products.vatRate,
+      cost: sql<string>`coalesce(nullif(${products.weightedAverageCost}, 0), nullif(${products.lastPurchaseCost}, 0), nullif(${products.weightedAverageCostBeforeSurcharge}, 0), 0)`,
       stock: inventoryBalances.quantityOnHand,
       isFeatured: products.isFeatured,
       soldUnits,
@@ -1255,6 +1256,7 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         const barcodeValue = boundedCatalogText(variant.barcode, 100);
         const priceRow = pricesByVariant.get(variant.loyverseId);
         const salePrice = toNumber(priceRow?.price ?? variant.defaultPrice);
+        const importedCost = toNumber(variant.purchaseCost ?? variant.cost);
         const stockAfter = stockByVariant.get(variant.loyverseId) ?? 0;
         const skuKey = normalizeCatalogText(skuValue);
         const barcodeKey = normalizeCatalogText(barcodeValue);
@@ -1263,14 +1265,17 @@ export async function importLoyverseCatalogToOperational(requestedStoreId?: stri
         try {
           const currentCategory = local ? localCategoryById.get(local.categoryId) : undefined;
           const categoryId = local && currentCategory && !currentCategory.loyverseId ? local.categoryId : fallback.id;
+          const localWeightedCost = local ? toNumber(local.weightedAverageCost) : 0;
+          const localLastCost = local ? toNumber(local.lastPurchaseCost) : 0;
+          const effectiveCost = localWeightedCost > 0 ? localWeightedCost : localLastCost > 0 ? localLastCost : importedCost;
           if (!local) {
-          const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) });
+          const inserted = await tx.insert(products).values({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost), minimumStock: quantity(toNumber(priceRow?.lowStock)) });
             const productId = Number(inserted[0].insertId);
             local = { id: productId, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue, barcode: barcodeValue, imageUrl: item.imageUrl || null, salePrice: money(salePrice), vatTypeId: defaultVat[0]?.id ?? null, vatRate: money(defaultVat[0] ? toNumber(defaultVat[0].rate) : defaultVatRate), equivalenceSurchargeRate: money(defaultVatRate === 10 ? 1.4 : defaultVatRate === 21 ? 5.2 : 0), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             localProducts.push(local);
             productsCreated += 1;
           } else {
-            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) }).where(eq(products.id, local.id));
+            await tx.update(products).set({ loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)), ...(effectiveCost > 0 && localWeightedCost <= 0 && localLastCost <= 0 ? { lastPurchaseCostBeforeSurcharge: money(effectiveCost), lastPurchaseCost: money(effectiveCost), weightedAverageCostBeforeSurcharge: money(effectiveCost), weightedAverageCost: money(effectiveCost) } : {}) }).where(eq(products.id, local.id));
             local = { ...local, loyverseItemId: item.loyverseId, loyverseVariantId: variant.loyverseId, loyverseStoreId: availableStoreId, categoryId, name: productName, sku: skuValue || local.sku || null, barcode: barcodeValue || local.barcode || null, imageUrl: item.imageUrl || local.imageUrl || null, salePrice: money(salePrice), showInTpv: !item.deletedAt && (priceRow?.availableForSale ?? true), isActive: !item.deletedAt, minimumStock: quantity(toNumber(priceRow?.lowStock)) } as typeof localProducts[number];
             productsUpdated += 1;
           }
