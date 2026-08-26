@@ -567,10 +567,11 @@ function AdminScreen({ onBack, onOpenMenu }: { onBack: () => void; onOpenMenu: (
     mutationFn: async () => {
       const catalog = await api<{ success: boolean; items: number; categories: number; taxes?: number; variants?: number; inventoryLevels: number }>("/admin/loyverse/sync/catalog", { method: "POST" });
       const sales = await syncSalesLast31Days(loyverseStoreId);
-      return { ...catalog, ...sales };
+      const imported = await api<{ productsCreated: number; productsUpdated: number; stockUpdated: number; costVariantsAvailable: number; costsUpdated: number; costsPreserved: number; taxesAvailable: number; productsWithRemoteVat: number; productsUsingVatFallback: number }>("/admin/loyverse/import/catalog", { method: "POST", body: JSON.stringify({ storeId: loyverseStoreId || undefined }) });
+      return { ...catalog, ...sales, imported };
     },
-    onSuccess: (result) => { toast.success("Loyverse sincronizado", { description: `${result.items} artículos, ${result.receipts} recibos y ${result.shifts} turnos importados. Solo lectura.` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); },
-    onError: (error) => toast.error("No se ha podido sincronizar Loyverse", { description: error.message }),
+    onSuccess: (result) => { toast.success("Loyverse sincronizado e importado al TPV", { description: `${result.items} artículos · ${result.receipts} recibos · ${result.imported.productsUpdated + result.imported.productsCreated} artículos aplicados · ${result.imported.costsUpdated} costes guardados · ${result.imported.productsWithRemoteVat} IVA de Loyverse · ${result.imported.productsUsingVatFallback} IVA de fallback` }); queryClient.invalidateQueries({ queryKey: ["loyverse-status"] }); queryClient.invalidateQueries({ queryKey: ["loyverse-dashboard"] }); queryClient.invalidateQueries({ queryKey: ["admin-products"] }); queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }); queryClient.invalidateQueries({ queryKey: ["catalog"] }); },
+    onError: (error) => toast.error("No se ha podido sincronizar e importar Loyverse", { description: error.message }),
   });
   const importLoyverseCatalogMutation = useMutation({
     mutationFn: () => api<{ success: boolean; categoriesCreated: number; categoriesUpdated: number; productsCreated: number; productsUpdated: number; stockUpdated: number; costVariantsAvailable: number; costsUpdated: number; costsPreserved: number; taxesAvailable: number; productsWithRemoteVat: number; productsUsingVatFallback: number; skipped: number; skippedDetails: string[] }>("/admin/loyverse/import/catalog", { method: "POST", body: JSON.stringify({ storeId: loyverseStoreId || undefined }) }),
