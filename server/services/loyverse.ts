@@ -90,6 +90,11 @@ function asDecimal(value: unknown, scale = 2) {
   return asNumber(value).toFixed(scale);
 }
 
+function normalizedTaxRate(value: unknown) {
+  const rate = asNumber(value);
+  return rate > 0 && rate <= 1 ? rate * 100 : rate;
+}
+
 function asDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const date = new Date(value);
@@ -255,7 +260,7 @@ async function upsertTax(tax: JsonObject) {
     loyverseId,
     name: asString(tax.name) || "Impuesto Loyverse",
     type: asString(tax.type),
-    rate: tax.rate === null || tax.rate === undefined ? null : asDecimal(tax.rate),
+    rate: tax.rate === null || tax.rate === undefined ? null : asDecimal(normalizedTaxRate(tax.rate)),
     deletedAt: asDate(tax.deleted_at),
     remoteCreatedAt: asDate(tax.created_at),
     remoteUpdatedAt: asDate(tax.updated_at),
