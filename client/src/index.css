@@ -638,3 +638,18 @@ button:disabled { cursor: not-allowed; }
 
 .post-sale-change { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 14px 0 5px; padding: 13px 15px; border: 1px solid #cfe2c8; border-radius: 10px; color: #58745d; background: #f2f9ef; font-size: 14px; }
 .post-sale-change strong { color: #3f7c2c; font-family: "DM Mono", monospace; font-size: 23px; }
+
+/* Botones principales de pago: grandes, visibles y táctiles */
+.pay-confirm-button { min-height: 92px; font-size: 22px; }
+.card-fast-pay { min-height: 290px; }
+.checkout-tab { min-height: 56px; font-size: 16px; }
+@media (max-height: 800px) and (min-width: 761px) {
+  .pay-confirm-button { min-height: 78px; font-size: 20px; }
+  .card-fast-pay { min-height: 245px; }
+  .checkout-tab { min-height: 52px; }
+}
+@media (max-width: 760px) {
+  .pay-confirm-button { min-height: 82px; font-size: 20px; }
+  .card-fast-pay { min-height: 245px; }
+  .checkout-tab { min-height: 52px; }
+}
