@@ -653,3 +653,19 @@ button:disabled { cursor: not-allowed; }
   .card-fast-pay { min-height: 245px; }
   .checkout-tab { min-height: 52px; }
 }
+
+/* Métodos de pago principales */
+.checkout-tabs { max-width: 720px; gap: 14px; margin-bottom: 18px; border: none; }
+.checkout-tab { min-height: 82px; border: 2px solid #d2ddd0; border-radius: 12px; font-size: 21px; font-weight: 800; }
+.checkout-tab svg { width: 26px; height: 26px; }
+.checkout-tab--active { border-color: #6ca033; background: #eff8e9; box-shadow: inset 0 0 0 2px rgba(108,160,51,.13); }
+.checkout-tab--direct { border-color: #74ad3d; color: #fff; background: linear-gradient(145deg,#82ba3b,#659d26); box-shadow: 0 9px 18px rgba(93,145,37,.18); }
+.checkout-tab--direct:hover:not(:disabled) { color: #fff; border-color: #5f9528; background: linear-gradient(145deg,#91c94c,#6ea52d); transform: translateY(-1px); }
+.checkout-tab--direct:disabled { opacity: .6; }
+@media (max-height: 800px) and (min-width: 761px) {
+  .checkout-tab { min-height: 70px; font-size: 19px; }
+}
+@media (max-width: 760px) {
+  .checkout-tabs { gap: 9px; }
+  .checkout-tab { min-height: 70px; font-size: 18px; }
+}
