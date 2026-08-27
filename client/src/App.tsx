@@ -113,7 +113,20 @@ type Product = {
   showInTpv?: boolean;
 };
 type CartLine = Product & { quantity: number; unitPriceOverride?: number; discountPercent?: number; pricingMode?: "normal" | "discount" | "cost" | "free" | "promotion"; promotionId?: number | null; promotionSelections?: number[]; promotionComponents?: string[] };
-type OpenTicket = { slotNumber: number; cart: CartLine[]; savedAt: string };
+type OpenTicket = { slotNumber: number; cart: CartLine[] | string | unknown; savedAt: string };
+
+function normalizeOpenTicketCart(value: OpenTicket["cart"]): CartLine[] {
+  if (Array.isArray(value)) return value as CartLine[];
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed as CartLine[] : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 function cartLineBasePrice(line: CartLine) { return line.pricingMode === "cost" ? Number(line.cost ?? 0) : Number(line.unitPriceOverride ?? line.salePrice); }
 function cartLineDiscount(line: CartLine) { return line.pricingMode === "free" ? 100 : Number(line.discountPercent ?? 0); }
@@ -208,7 +221,8 @@ function formatOpenTicketDate(value: string) {
 }
 
 function OpenTicketsDialog({ tickets, mode, cartCount, cartTotal, saving, loading, error, onClose, onSave, onLoad, onClear, onRetry }: { tickets: OpenTicket[]; mode: "save" | "load"; cartCount: number; cartTotal: number; saving: boolean; loading: boolean; error: string | null; onClose: () => void; onSave: (slotNumber: number) => void; onLoad: (ticket: OpenTicket) => void; onClear: (slotNumber: number) => void; onRetry: () => void }) {
-  const bySlot = new Map(tickets.map((ticket) => [ticket.slotNumber, ticket]));
+  const normalizedTickets = tickets.map((ticket) => ({ ...ticket, cart: normalizeOpenTicketCart(ticket.cart) }));
+  const bySlot = new Map(normalizedTickets.map((ticket) => [ticket.slotNumber, ticket]));
   return <div className="modal-backdrop open-tickets-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="open-tickets-dialog" role="dialog" aria-modal="true" aria-labelledby="open-tickets-title"><div className="dialog-header"><div><span className="eyebrow">TICKETS ABIERTOS</span><h2 id="open-tickets-title">{mode === "save" ? "Guardar ticket" : "Abrir ticket"}</h2><p>{mode === "save" ? `${cartCount} artículos · ${euro.format(cartTotal)}` : "Selecciona una posición guardada para recuperarla."}</p></div><button type="button" className="post-sale-x-button" onClick={onClose} aria-label="Cerrar"><X size={25} /></button></div>{loading ? <div className="open-tickets-state">Cargando tickets guardados…</div> : error ? <div className="open-tickets-state open-tickets-state--error"><strong>No se han podido cargar los tickets abiertos.</strong><small>{error}</small><button type="button" className="secondary-button" onClick={onRetry}>Reintentar</button></div> : <div className="open-tickets-grid">{Array.from({ length: 10 }, (_, index) => index + 1).map((slotNumber) => { const ticket = bySlot.get(slotNumber); return <article className={ticket ? "open-ticket-slot open-ticket-slot--filled" : "open-ticket-slot"} key={slotNumber}><div className="open-ticket-slot__heading"><strong>Ticket {slotNumber}</strong><span>{ticket ? `${ticket.cart.length} líneas` : "Vacío"}</span></div>{ticket ? <small>Último guardado<br /><b>{formatOpenTicketDate(ticket.savedAt)}</b></small> : <small className="open-ticket-slot__empty">Sin ticket guardado</small>}<div className="open-ticket-slot__actions">{mode === "save" ? <button type="button" className="secondary-button secondary-button--small" disabled={saving} onClick={(event) => { event.preventDefault(); onSave(slotNumber); }}>{saving ? "Guardando…" : ticket ? "Reemplazar" : "Guardar aquí"}</button> : <button type="button" className="primary-button primary-button--small" disabled={!ticket} onClick={(event) => { event.preventDefault(); if (ticket) onLoad(ticket); }}>Abrir</button>}{ticket && <button type="button" className="table-icon-button table-icon-button--danger" onClick={(event) => { event.preventDefault(); onClear(slotNumber); }} aria-label={`Eliminar ticket ${slotNumber}`} title={`Eliminar ticket ${slotNumber}`}><Trash2 size={15} /></button>}</div></article>; })}</div>}<p className="helper-text">Puedes mantener hasta diez tickets abiertos. La fecha y hora corresponden al último guardado de cada posición.</p></section></div>;
 }
 
@@ -286,7 +300,9 @@ function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   };
   const loadOpenTicket = (ticket: OpenTicket) => {
     if (cart.length && !window.confirm("El ticket actual se reemplazará por el ticket guardado. ¿Continuar?")) return;
-    setCart(ticket.cart);
+    const normalizedCart = normalizeOpenTicketCart(ticket.cart);
+    if (!normalizedCart.length) { toast.error(`El ticket ${ticket.slotNumber} no contiene líneas válidas.`); return; }
+    setCart(normalizedCart);
     setActiveOpenTicketSlot(ticket.slotNumber);
     setOpenTicketsMode(null);
     toast.success(`Ticket ${ticket.slotNumber} abierto`, { description: `Guardado el ${formatOpenTicketDate(ticket.savedAt)}` });
@@ -389,7 +405,7 @@ function PosScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
         <div className="ticket-lines">
           {cart.length === 0 ? <div className="empty-ticket"><div><ReceiptText size={28} /></div><strong>El ticket está vacío</strong><span>Selecciona artículos del catálogo para empezar.</span></div> : cart.map((line) => <article className="ticket-line ticket-line--editable" key={cartLineIdentity(line)} onClick={() => setEditingLineKey(cartLineIdentity(line))} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setEditingLineKey(cartLineIdentity(line)); }} aria-label={`Editar ${line.name}`}><ProductImage product={line} compact /><div className="ticket-line__info"><strong>{line.name}</strong><span>× {line.quantity} · {euro.format(cartLineUnitPrice(line))} / {line.unit}{cartLineDiscount(line) > 0 ? ` · -${cartLineDiscount(line)}%` : ""}</span>{line.promotionComponents?.length ? <div className="ticket-line__components"><small>Incluye:</small>{line.promotionComponents.map((component, index) => <span key={`${component}-${index}`}>{component}</span>)}</div> : null}<div className="quantity-control"><button onClick={(event) => { event.stopPropagation(); updateCartQuantity(cartLineIdentity(line), -1); }} aria-label={`Restar ${line.name}`}><Minus size={15} /></button><span>{line.quantity}</span><button onClick={(event) => { event.stopPropagation(); updateCartQuantity(cartLineIdentity(line), 1); }} aria-label={`Sumar ${line.name}`}><Plus size={15} /></button></div></div><div className="ticket-line__total"><strong>{euro.format(cartLineTotal(line))}</strong><button onClick={(event) => { event.stopPropagation(); updateCartQuantity(cartLineIdentity(line), -line.quantity); }} aria-label={`Eliminar ${line.name}`}><X size={16} /></button></div></article>)}
         </div>
-        <footer className="ticket-footer"><div className="ticket-summary"><div><span>Subtotal</span><strong>{euro.format(cartTotal)}</strong></div><div><span>Descuentos</span><strong>{euro.format(cart.reduce((sum, line) => sum + Math.max(0, (Number(line.salePrice) - cartLineUnitPrice(line)) * line.quantity), 0))}</strong></div><div><span>IVA incluido</span><strong>{euro.format(cart.reduce((sum, line) => sum + cartLineVat(line), 0))}</strong></div><div className="ticket-total"><span>Total</span><strong>{euro.format(cartTotal)}</strong></div></div><div className="ticket-footer__actions"><div className="ticket-open-actions"><button className="save-ticket-button" disabled={!cart.length || saveOpenTicketMutation.isPending} onClick={() => setOpenTicketsMode("save")}><ReceiptText size={17} /> Guardar ticket</button><button className="open-ticket-button" onClick={() => setOpenTicketsMode("load")}><Folder size={17} /> Abrir ticket</button></div><button className="charge-button" disabled={!cart.length || checkoutMutation.isPending} onClick={() => setIsPaying(true)}>{checkoutMutation.isPending ? "Procesando…" : <><CreditCard size={20} /> Cobrar {cart.length ? euro.format(cartTotal) : ""}</>}</button></div><div className="ticket-footnote"><Barcode size={14} /> Escanea un código o usa la búsqueda</div></footer>
+        <footer className="ticket-footer"><div className="ticket-summary"><div><span>Subtotal</span><strong>{euro.format(cartTotal)}</strong></div><div><span>Descuentos</span><strong>{euro.format(cart.reduce((sum, line) => sum + Math.max(0, (Number(line.salePrice) - cartLineUnitPrice(line)) * line.quantity), 0))}</strong></div><div><span>IVA incluido</span><strong>{euro.format(cart.reduce((sum, line) => sum + cartLineVat(line), 0))}</strong></div><div className="ticket-total"><span>Total</span><strong>{euro.format(cartTotal)}</strong></div></div><div className="ticket-footer__actions"><div className="ticket-open-actions"><button type="button" className="save-ticket-button" disabled={!cart.length || saveOpenTicketMutation.isPending} onClick={() => setOpenTicketsMode("save")}><ReceiptText size={17} /> Guardar ticket</button><button type="button" className="open-ticket-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpenTicketsMode("load"); }}><Folder size={17} /> Abrir ticket</button></div><button className="charge-button" disabled={!cart.length || checkoutMutation.isPending} onClick={() => setIsPaying(true)}>{checkoutMutation.isPending ? "Procesando…" : <><CreditCard size={20} /> Cobrar {cart.length ? euro.format(cartTotal) : ""}</>}</button></div><div className="ticket-footnote"><Barcode size={14} /> Escanea un código o usa la búsqueda</div></footer>
       </aside>
       {editingLineKey !== null && cart.find((line) => cartLineIdentity(line) === editingLineKey) && <TicketLineEditor line={cart.find((line) => cartLineIdentity(line) === editingLineKey)!} onClose={() => setEditingLineKey(null)} onSave={(changes) => updateCartLine(editingLineKey, changes)} />}
       {promotionLoading && <div className="modal-backdrop"><section className="promotion-selector"><div className="admin-empty">Cargando promoción…</div></section></div>}
