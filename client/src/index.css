@@ -568,3 +568,7 @@ button:disabled { cursor: not-allowed; }
   .open-tickets-dialog { padding: 20px 15px; }
   .open-tickets-dialog h2 { font-size: 22px; }
 }
+.open-tickets-state { display: grid; place-items: center; gap: 10px; min-height: 220px; padding: 25px; color: #6e8173; text-align: center; }
+.open-tickets-state strong { color: #31543b; }
+.open-tickets-state small { max-width: 560px; color: #8b6c6c; overflow-wrap: anywhere; }
+.open-tickets-state--error { border: 1px solid #efd6d6; border-radius: 12px; background: #fffafa; }

@@ -253,11 +253,17 @@ export type CheckoutInput = {
 
 type OpenTicketCart = unknown[];
 
+async function ensureOpenTicketsTable() {
+  const database = requireDb();
+  await database.execute(sql.raw("CREATE TABLE IF NOT EXISTS pos_open_tickets (id INT NOT NULL AUTO_INCREMENT, slot_number INT NOT NULL, cart JSON NOT NULL, saved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (id), UNIQUE KEY pos_open_tickets_slot_unique (slot_number)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"));
+}
+
 function assertOpenTicketSlot(slotNumber: number) {
   if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 10) throw new Error("La posición del ticket debe estar entre 1 y 10.");
 }
 
 export async function listOpenTickets() {
+  await ensureOpenTicketsTable();
   const database = requireDb();
   return database.select({ slotNumber: openTickets.slotNumber, cart: openTickets.cart, savedAt: openTickets.savedAt }).from(openTickets).orderBy(asc(openTickets.slotNumber));
 }
@@ -265,6 +271,7 @@ export async function listOpenTickets() {
 export async function saveOpenTicket(input: { slotNumber: number; cart: OpenTicketCart }) {
   assertOpenTicketSlot(input.slotNumber);
   if (!Array.isArray(input.cart) || input.cart.length === 0) throw new Error("No se puede guardar un ticket vacío.");
+  await ensureOpenTicketsTable();
   const database = requireDb();
   await database.insert(openTickets).values({ slotNumber: input.slotNumber, cart: input.cart }).onDuplicateKeyUpdate({ set: { cart: input.cart, savedAt: new Date() } });
   const saved = await database.select({ slotNumber: openTickets.slotNumber, cart: openTickets.cart, savedAt: openTickets.savedAt }).from(openTickets).where(eq(openTickets.slotNumber, input.slotNumber)).limit(1);
@@ -273,6 +280,7 @@ export async function saveOpenTicket(input: { slotNumber: number; cart: OpenTick
 
 export async function clearOpenTicket(slotNumber: number) {
   assertOpenTicketSlot(slotNumber);
+  await ensureOpenTicketsTable();
   const database = requireDb();
   await database.delete(openTickets).where(eq(openTickets.slotNumber, slotNumber));
   return { success: true };
